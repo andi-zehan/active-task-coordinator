@@ -1494,7 +1494,10 @@ function createCardElement(card) {
 
 function setupDropZone(cardsContainer) {
   cardsContainer.addEventListener('dragover', (e) => {
+    // Check if this is a swimlane drag (not a card drag) — ignore it
+    if (document.querySelector('.swimlane.dragging-lane')) return;
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     cardsContainer.classList.add('drag-over');
   });
@@ -1504,7 +1507,9 @@ function setupDropZone(cardsContainer) {
     }
   });
   cardsContainer.addEventListener('drop', async (e) => {
+    if (document.querySelector('.swimlane.dragging-lane')) return;
     e.preventDefault();
+    e.stopPropagation();
     cardsContainer.classList.remove('drag-over');
     let dragData;
     try { dragData = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
