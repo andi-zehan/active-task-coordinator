@@ -250,6 +250,21 @@ a { color: #0052cc; text-decoration: none; }
   padding: 5px 12px; background: none; color: #5e6c84; border: 1px solid #dfe1e6;
   border-radius: 4px; font-size: 12px; cursor: pointer;
 }
+.swimlane-drag-handle {
+  cursor: grab;
+  padding: 4px 2px;
+  color: #b3b9c4;
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+.swimlane-drag-handle:hover { color: #5e6c84; }
+.swimlane-drag-handle:active { cursor: grabbing; }
+.swimlane.dragging-lane { opacity: 0.5; }
+.swimlane.drop-target-above { border-top: 2px solid #0052cc; }
+.swimlane.drop-target-below { border-bottom: 2px solid #0052cc; }
 .swimlane-color {
   width: 12px;
   height: 12px;
@@ -1292,8 +1307,10 @@ async function renderBoard() {
 
     const lane = document.createElement('div');
     lane.className = 'swimlane';
+    lane.dataset.board = boardInfo.slug;
     lane.innerHTML = `
       <div class="swimlane-header">
+        <div class="swimlane-drag-handle" title="Drag to reorder">&#x2630;</div>
         <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
         <span class="swimlane-header-name" data-board="${escHtml(boardInfo.slug)}">${escHtml(boardData.name || boardInfo.slug)}</span>
         <div class="board-edit-popover" data-board="${escHtml(boardInfo.slug)}">
@@ -1362,6 +1379,82 @@ async function renderBoard() {
 
     container.appendChild(lane);
   }
+
+  setupSwimlaneDrag(container);
+}
+
+function setupSwimlaneDrag(container) {
+  let draggedLane = null;
+
+  container.querySelectorAll('.swimlane-drag-handle').forEach(handle => {
+    const lane = handle.closest('.swimlane');
+
+    handle.addEventListener('mousedown', () => {
+      lane.draggable = true;
+    });
+
+    lane.addEventListener('dragstart', (e) => {
+      if (!e.target.classList.contains('swimlane')) return;
+      draggedLane = lane;
+      lane.classList.add('dragging-lane');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', lane.dataset.board);
+    });
+
+    lane.addEventListener('dragend', () => {
+      lane.draggable = false;
+      lane.classList.remove('dragging-lane');
+      container.querySelectorAll('.swimlane').forEach(l => {
+        l.classList.remove('drop-target-above', 'drop-target-below');
+      });
+      draggedLane = null;
+    });
+  });
+
+  container.querySelectorAll('.swimlane').forEach(lane => {
+    lane.addEventListener('dragover', (e) => {
+      if (!draggedLane || draggedLane === lane) return;
+      // Only handle swimlane drags, not card drags
+      if (!draggedLane.classList.contains('swimlane')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const rect = lane.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      lane.classList.remove('drop-target-above', 'drop-target-below');
+      if (e.clientY < midY) {
+        lane.classList.add('drop-target-above');
+      } else {
+        lane.classList.add('drop-target-below');
+      }
+    });
+
+    lane.addEventListener('dragleave', () => {
+      lane.classList.remove('drop-target-above', 'drop-target-below');
+    });
+
+    lane.addEventListener('drop', async (e) => {
+      if (!draggedLane || draggedLane === lane) return;
+      if (!draggedLane.classList.contains('swimlane')) return;
+      e.preventDefault();
+      lane.classList.remove('drop-target-above', 'drop-target-below');
+
+      const rect = lane.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        container.insertBefore(draggedLane, lane);
+      } else {
+        container.insertBefore(draggedLane, lane.nextSibling);
+      }
+
+      // Persist new order
+      const newOrder = [...container.querySelectorAll('.swimlane')].map(l => l.dataset.board);
+      try {
+        await api.put('/api/boards-order', newOrder);
+      } catch (err) {
+        console.error('Failed to save board order:', err);
+      }
+    });
+  });
 }
 
 function createCardElement(card) {

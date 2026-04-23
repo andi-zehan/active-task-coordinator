@@ -292,6 +292,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/boards' and method == 'POST':
             return self._handle_create_board()
 
+        # /api/boards-order
+        if path == '/api/boards-order' and method == 'PUT':
+            return self._handle_update_boards_order()
+
         # /api/boards/:board
         m = re.match(r'^/api/boards/([^/]+)$', path)
         if m:
@@ -445,6 +449,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         order = [s for s in order if s != board_slug]
         write_json(DATA_DIR / "_boards-order.json", order)
         self._send_json({'deleted': board_slug})
+
+    def _handle_update_boards_order(self):
+        new_order = self._read_body()
+        if not isinstance(new_order, list):
+            return self._send_error(400, 'Expected a JSON array of board slugs')
+        write_json(DATA_DIR / "_boards-order.json", new_order)
+        self._send_json({'ok': True})
 
     # ── card handlers ────────────────────────────────────────────────
 
