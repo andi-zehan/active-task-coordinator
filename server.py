@@ -479,7 +479,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             'attachments': data.get('attachments', []),
         }
         description = data.get('description', '')
-        body = f"\n## Description\n\n{description}\n\n## Checklist\n\n\n## Comments\n\n"
+        body = f"\n## Description\n\n{description}\n\n## Checklist\n\n\n\n## Comments\n\n"
         write_card(board_slug, list_slug, slug, meta, body)
         order_path = DATA_DIR / "boards" / board_slug / list_slug / "_order.json"
         order = read_json(order_path)
@@ -513,16 +513,16 @@ class RequestHandler(BaseHTTPRequestHandler):
         # Update description section
         if 'description' in data:
             body = re.sub(
-                r'(## Description\n\n).*?(\n\n## )',
-                r'\g<1>' + data['description'] + r'\2',
+                r'(## Description\n\n).*?(\n+## )',
+                r'\g<1>' + data['description'] + '\n\n## ',
                 body, count=1, flags=re.DOTALL
             )
 
         # Update checklist section
         if 'checklist' in data:
             body = re.sub(
-                r'(## Checklist\n\n).*?(\n\n## )',
-                r'\g<1>' + data['checklist'] + r'\2',
+                r'(## Checklist\n\n).*?(\n+## )',
+                r'\g<1>' + data['checklist'] + '\n\n## ',
                 body, count=1, flags=re.DOTALL
             )
 
