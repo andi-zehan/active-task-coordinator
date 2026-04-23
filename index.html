@@ -580,6 +580,14 @@ a { color: #0052cc; text-decoration: none; }
   gap: 8px;
   margin-bottom: 8px;
 }
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5e6c84;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
 .modal-field-label {
   font-size: 12px;
   font-weight: 600;
@@ -846,6 +854,40 @@ a { color: #0052cc; text-decoration: none; }
 </div>
 <div class="view-container" id="view-table">
   <div class="table-view" id="table-content"></div>
+</div>
+
+<!-- ── New Card Dialog ────────────────────────────────────────── -->
+<div class="modal-overlay" id="new-card-overlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" id="new-card-close">&times;</button>
+    <div class="modal-body" style="padding:20px 24px 24px;">
+      <h2 style="font-size:18px;margin-bottom:16px;">New Card</h2>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Title</label>
+        <input type="text" id="nc-title" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" placeholder="Card title..." autofocus />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Board</label>
+        <select id="nc-board" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;"></select>
+      </div>
+      <div id="nc-new-board-fields" style="display:none;margin-bottom:12px;">
+        <label class="field-label">Board Name</label>
+        <input type="text" id="nc-board-name" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" placeholder="New board name..." />
+        <label class="field-label" style="margin-top:8px;display:block;">Color</label>
+        <input type="color" id="nc-board-color" value="#4A90D9" style="width:40px;height:30px;border:1px solid #dfe1e6;border-radius:4px;cursor:pointer;" />
+      </div>
+      <div style="margin-bottom:16px;">
+        <label class="field-label">List</label>
+        <select id="nc-list" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;">
+          <option value="ideas">Ideas</option>
+          <option value="backlog" selected>Backlog</option>
+          <option value="in-progress">In Progress</option>
+          <option value="done">Done</option>
+        </select>
+      </div>
+      <button id="nc-submit" style="width:100%;padding:8px;background:#0052cc;color:#fff;border:none;border-radius:4px;font-size:14px;font-weight:600;cursor:pointer;">Create Card</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Card Detail Modal ──────────────────────────────────────── -->
@@ -2046,22 +2088,71 @@ document.getElementById('filter-due').addEventListener('change', (e) => {
 });
 
 // New card button
-document.getElementById('btn-new-card').addEventListener('click', async () => {
-  if (!state.currentBoard) {
-    alert('Select or create a board first.');
-    return;
+// New Card Dialog
+function openNewCardDialog() {
+  const overlay = document.getElementById('new-card-overlay');
+  const boardSel = document.getElementById('nc-board');
+  boardSel.innerHTML = state.boards.map(b =>
+    `<option value="${escHtml(b.slug)}"${b.slug === state.currentBoard ? ' selected' : ''}>${escHtml(b.name)}</option>`
+  ).join('') + '<option value="__new__">+ New Board...</option>';
+  document.getElementById('nc-new-board-fields').style.display = 'none';
+  document.getElementById('nc-title').value = '';
+  document.getElementById('nc-board-name').value = '';
+  overlay.classList.add('visible');
+  setTimeout(() => document.getElementById('nc-title').focus(), 50);
+}
+
+document.getElementById('nc-board').addEventListener('change', (e) => {
+  document.getElementById('nc-new-board-fields').style.display =
+    e.target.value === '__new__' ? 'block' : 'none';
+});
+
+document.getElementById('new-card-close').addEventListener('click', () => {
+  document.getElementById('new-card-overlay').classList.remove('visible');
+});
+document.getElementById('new-card-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('new-card-overlay'))
+    document.getElementById('new-card-overlay').classList.remove('visible');
+});
+
+document.getElementById('nc-submit').addEventListener('click', async () => {
+  const title = document.getElementById('nc-title').value.trim();
+  if (!title) { document.getElementById('nc-title').focus(); return; }
+  let board = document.getElementById('nc-board').value;
+  const list = document.getElementById('nc-list').value;
+
+  if (board === '__new__') {
+    const boardName = document.getElementById('nc-board-name').value.trim();
+    if (!boardName) { document.getElementById('nc-board-name').focus(); return; }
+    const color = document.getElementById('nc-board-color').value;
+    try {
+      const result = await api.post('/api/boards', { name: boardName, color });
+      board = result.slug;
+      state.currentBoard = board;
+      await loadBoards();
+    } catch (err) {
+      alert('Failed to create board: ' + err.message);
+      return;
+    }
   }
-  const title = prompt('Card title:');
-  if (!title) return;
-  const list = prompt('List (ideas, backlog, in-progress, done):', 'ideas') || 'ideas';
+
   try {
-    await api.post(`/api/boards/${state.currentBoard}/lists/${list}/cards`, { title });
+    await api.post(`/api/boards/${board}/lists/${list}/cards`, { title });
+    state.currentBoard = board;
+    document.getElementById('board-select').value = board;
+    document.getElementById('new-card-overlay').classList.remove('visible');
     await populateFilterOptions();
     await refreshCurrentView();
   } catch (err) {
     alert('Failed to create card: ' + err.message);
   }
 });
+
+document.getElementById('nc-title').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('nc-submit').click();
+});
+
+document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
 
 // Modal close
 document.getElementById('modal-close').addEventListener('click', closeModal);
