@@ -210,6 +210,45 @@ a { color: #0052cc; text-decoration: none; }
   font-size: 15px;
   font-weight: 700;
   color: #172b4d;
+  position: relative;
+}
+.swimlane-header-name {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.swimlane-header-name:hover { background: #ebecf0; }
+.board-edit-popover {
+  position: absolute; top: 100%; left: 20px; z-index: 50;
+  background: #fff; border: 1px solid #dfe1e6; border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 12px 16px;
+  display: none; width: 240px;
+}
+.board-edit-popover.visible { display: block; }
+.board-edit-popover label {
+  display: block; font-size: 11px; font-weight: 600; color: #5e6c84;
+  text-transform: uppercase; margin-bottom: 4px; margin-top: 8px;
+}
+.board-edit-popover label:first-child { margin-top: 0; }
+.board-edit-popover input[type="text"] {
+  width: 100%; padding: 5px 8px; border: 1px solid #dfe1e6;
+  border-radius: 4px; font-size: 13px;
+}
+.board-edit-popover input[type="color"] {
+  width: 40px; height: 28px; border: 1px solid #dfe1e6;
+  border-radius: 4px; cursor: pointer; padding: 2px;
+}
+.board-edit-popover .popover-actions {
+  display: flex; gap: 8px; margin-top: 12px;
+}
+.board-edit-popover .btn-save {
+  padding: 5px 12px; background: #0052cc; color: #fff; border: none;
+  border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.board-edit-popover .btn-save:hover { background: #0065ff; }
+.board-edit-popover .btn-cancel {
+  padding: 5px 12px; background: none; color: #5e6c84; border: 1px solid #dfe1e6;
+  border-radius: 4px; font-size: 12px; cursor: pointer;
 }
 .swimlane-color {
   width: 12px;
@@ -1256,10 +1295,47 @@ async function renderBoard() {
     lane.innerHTML = `
       <div class="swimlane-header">
         <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
-        ${escHtml(boardData.name || boardInfo.slug)}
+        <span class="swimlane-header-name" data-board="${escHtml(boardInfo.slug)}">${escHtml(boardData.name || boardInfo.slug)}</span>
+        <div class="board-edit-popover" data-board="${escHtml(boardInfo.slug)}">
+          <label>Board Name</label>
+          <input type="text" class="be-name" value="${escHtml(boardData.name || '')}" />
+          <label>Color</label>
+          <input type="color" class="be-color" value="${escHtml(boardColor)}" />
+          <div class="popover-actions">
+            <button class="btn-save be-save">Save</button>
+            <button class="btn-cancel be-cancel">Cancel</button>
+          </div>
+        </div>
       </div>
       <div class="swimlane-columns"></div>
     `;
+
+    const header = lane.querySelector('.swimlane-header');
+    const nameEl = header.querySelector('.swimlane-header-name');
+    const popover = header.querySelector('.board-edit-popover');
+
+    nameEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.board-edit-popover.visible').forEach(p => p.classList.remove('visible'));
+      popover.classList.toggle('visible');
+    });
+
+    popover.querySelector('.be-save').addEventListener('click', async () => {
+      const newName = popover.querySelector('.be-name').value.trim();
+      const newColor = popover.querySelector('.be-color').value;
+      if (!newName) return;
+      await api.put('/api/boards/' + boardInfo.slug, { name: newName, color: newColor });
+      popover.classList.remove('visible');
+      await loadBoards();
+      await renderBoard();
+    });
+
+    popover.querySelector('.be-cancel').addEventListener('click', () => {
+      popover.classList.remove('visible');
+    });
+
+    popover.addEventListener('click', (e) => e.stopPropagation());
+
     const columnsContainer = lane.querySelector('.swimlane-columns');
 
     for (const listSlug of listOrder) {
@@ -2198,6 +2274,11 @@ document.getElementById('btn-new-card').addEventListener('click', openNewCardDia
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-overlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// Close board edit popovers on outside click
+document.addEventListener('click', () => {
+  document.querySelectorAll('.board-edit-popover.visible').forEach(p => p.classList.remove('visible'));
 });
 
 // Keyboard shortcuts
