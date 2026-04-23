@@ -2289,14 +2289,15 @@ document.getElementById('filter-due').addEventListener('change', (e) => {
 function openNewCardDialog() {
   const overlay = document.getElementById('new-card-overlay');
   const boardSel = document.getElementById('nc-board');
+  const hasBoards = state.boards.length > 0;
   boardSel.innerHTML = state.boards.map(b =>
     `<option value="${escHtml(b.slug)}"${b.slug === state.currentBoard ? ' selected' : ''}>${escHtml(b.name)}</option>`
-  ).join('') + '<option value="__new__">+ New Board...</option>';
-  document.getElementById('nc-new-board-fields').style.display = 'none';
+  ).join('') + '<option value="__new__"' + (!hasBoards ? ' selected' : '') + '>+ New Board...</option>';
+  document.getElementById('nc-new-board-fields').style.display = hasBoards ? 'none' : 'block';
   document.getElementById('nc-title').value = '';
   document.getElementById('nc-board-name').value = '';
   overlay.classList.add('visible');
-  setTimeout(() => document.getElementById('nc-title').focus(), 50);
+  setTimeout(() => document.getElementById(hasBoards ? 'nc-title' : 'nc-board-name').focus(), 50);
 }
 
 document.getElementById('nc-board').addEventListener('change', (e) => {
