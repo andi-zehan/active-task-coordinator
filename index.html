@@ -238,18 +238,6 @@ a { color: #0052cc; text-decoration: none; }
   width: 40px; height: 28px; border: 1px solid #dfe1e6;
   border-radius: 4px; cursor: pointer; padding: 2px;
 }
-.board-edit-popover .popover-actions {
-  display: flex; gap: 8px; margin-top: 12px;
-}
-.board-edit-popover .btn-save {
-  padding: 5px 12px; background: #0052cc; color: #fff; border: none;
-  border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;
-}
-.board-edit-popover .btn-save:hover { background: #0065ff; }
-.board-edit-popover .btn-cancel {
-  padding: 5px 12px; background: none; color: #5e6c84; border: 1px solid #dfe1e6;
-  border-radius: 4px; font-size: 12px; cursor: pointer;
-}
 .swimlane-drag-handle {
   cursor: grab;
   padding: 4px 2px;
@@ -1318,10 +1306,6 @@ async function renderBoard() {
           <input type="text" class="be-name" value="${escHtml(boardData.name || '')}" />
           <label>Color</label>
           <input type="color" class="be-color" value="${escHtml(boardColor)}" />
-          <div class="popover-actions">
-            <button class="btn-save be-save">Save</button>
-            <button class="btn-cancel be-cancel">Cancel</button>
-          </div>
         </div>
       </div>
       <div class="swimlane-columns"></div>
@@ -1337,19 +1321,18 @@ async function renderBoard() {
       popover.classList.toggle('visible');
     });
 
-    popover.querySelector('.be-save').addEventListener('click', async () => {
+    const saveBoard = async () => {
       const newName = popover.querySelector('.be-name').value.trim();
       const newColor = popover.querySelector('.be-color').value;
       if (!newName) return;
       await api.put('/api/boards/' + boardInfo.slug, { name: newName, color: newColor });
-      popover.classList.remove('visible');
+      nameEl.textContent = newName;
+      lane.querySelector('.swimlane-color').style.background = newColor;
       await loadBoards();
-      await renderBoard();
-    });
+    };
 
-    popover.querySelector('.be-cancel').addEventListener('click', () => {
-      popover.classList.remove('visible');
-    });
+    popover.querySelector('.be-name').addEventListener('blur', saveBoard);
+    popover.querySelector('.be-color').addEventListener('input', saveBoard);
 
     popover.addEventListener('click', (e) => e.stopPropagation());
 
