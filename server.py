@@ -554,6 +554,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         target_list = data.get('target_list', '').strip()
         if not target_list:
             return self._send_error(400, 'target_list is required')
+        target_board = data.get('target_board', board_slug).strip()
         position = data.get('position', -1)
 
         # Remove from source order
@@ -564,7 +565,7 @@ class RequestHandler(BaseHTTPRequestHandler):
 
         # Move the file
         src_path = DATA_DIR / "boards" / board_slug / list_slug / f"{card_slug}.md"
-        dst_dir = DATA_DIR / "boards" / board_slug / target_list
+        dst_dir = DATA_DIR / "boards" / target_board / target_list
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst_path = dst_dir / f"{card_slug}.md"
         shutil.move(str(src_path), str(dst_path))
@@ -578,7 +579,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             dst_order.insert(position, card_slug)
         write_json(dst_order_path, dst_order)
 
-        self._send_json({'moved': card_slug, 'from': list_slug, 'to': target_list})
+        self._send_json({'moved': card_slug, 'from': list_slug, 'to': target_list, 'board': target_board})
 
     # ── aggregation handlers ─────────────────────────────────────────
 

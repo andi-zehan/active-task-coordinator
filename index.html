@@ -196,11 +196,30 @@ a { color: #0052cc; text-decoration: none; }
 
 /* ── Board View ───────────────────────────────────────────────── */
 .board-view {
+  padding: 16px;
+  min-height: calc(100vh - 100px);
+}
+.swimlane {
+  margin-bottom: 24px;
+}
+.swimlane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #172b4d;
+}
+.swimlane-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.swimlane-columns {
   display: flex;
   gap: 12px;
-  padding: 16px;
   overflow-x: auto;
-  min-height: calc(100vh - 100px);
   align-items: flex-start;
 }
 .board-column {
@@ -1215,126 +1234,147 @@ async function refreshCurrentView() {
    ================================================================ */
 async function renderBoard() {
   const container = document.getElementById('board-columns');
-  if (!state.currentBoard) {
-    container.innerHTML = '<div style="padding:40px;color:#5e6c84;text-align:center;">No board selected. Create a board to get started.</div>';
+  if (state.boards.length === 0) {
+    container.innerHTML = '<div style="padding:40px;color:#5e6c84;text-align:center;">No boards yet. Create a board to get started.</div>';
     return;
   }
-  try {
-    state.boardData = await api.get('/api/boards/' + state.currentBoard);
-  } catch {
-    container.innerHTML = '<div style="padding:40px;color:#e74c3c;">Failed to load board.</div>';
-    return;
-  }
-  const lists = state.boardData.lists || {};
-  const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
   container.innerHTML = '';
 
-  for (const listSlug of listOrder) {
-    const rawCards = lists[listSlug] || [];
-    const cards = applyFilters(rawCards);
-    const col = document.createElement('div');
-    col.className = 'board-column';
-    col.innerHTML = `
-      <div class="column-header">
-        <span>${formatListName(listSlug)}</span>
-        <span class="card-count">${cards.length}</span>
+  for (const boardInfo of state.boards) {
+    let boardData;
+    try {
+      boardData = await api.get('/api/boards/' + boardInfo.slug);
+    } catch {
+      continue;
+    }
+    const lists = boardData.lists || {};
+    const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
+    const boardColor = boardData.color || '#4A90D9';
+
+    const lane = document.createElement('div');
+    lane.className = 'swimlane';
+    lane.innerHTML = `
+      <div class="swimlane-header">
+        <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
+        ${escHtml(boardData.name || boardInfo.slug)}
       </div>
-      <div class="column-cards" data-list="${listSlug}"></div>
+      <div class="swimlane-columns"></div>
     `;
-    const cardsContainer = col.querySelector('.column-cards');
+    const columnsContainer = lane.querySelector('.swimlane-columns');
 
-    for (const card of cards) {
-      const cardEl = document.createElement('div');
-      cardEl.className = 'card';
-      cardEl.draggable = true;
-      cardEl.dataset.card = card.slug;
-      cardEl.dataset.board = card.board;
-      cardEl.dataset.list = card.list;
+    for (const listSlug of listOrder) {
+      const rawCards = lists[listSlug] || [];
+      const cards = applyFilters(rawCards);
+      const col = document.createElement('div');
+      col.className = 'board-column';
+      col.innerHTML = `
+        <div class="column-header">
+          <span>${formatListName(listSlug)}</span>
+          <span class="card-count">${cards.length}</span>
+        </div>
+        <div class="column-cards" data-list="${listSlug}" data-board="${escHtml(boardInfo.slug)}"></div>
+      `;
+      const cardsContainer = col.querySelector('.column-cards');
 
-      const labels = Array.isArray(card.labels) ? card.labels : [];
-      let labelsHtml = '';
-      if (labels.length > 0) {
-        labelsHtml = '<div class="card-labels">' +
-          labels.map(l => `<div class="card-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('') +
-          '</div>';
+      for (const card of cards) {
+        cardsContainer.appendChild(createCardElement(card));
       }
 
-      const cl = parseChecklistFromBody(card);
-      let checkHtml = '';
-      if (cl.total > 0) {
-        const pct = Math.round((cl.done / cl.total) * 100);
-        checkHtml = `<span class="card-checklist-bar">
-          <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
-          <span>${cl.done}/${cl.total}</span>
-        </span>`;
-      }
-
-      const dueClass = card.due && isOverdue(card.due) ? 'overdue' : '';
-
-      let metaHtml = '';
-      const metaParts = [];
-      if (card.assignee) metaParts.push(`<span class="card-assignee">${escHtml(card.assignee)}</span>`);
-      if (card.due) metaParts.push(`<span class="card-due ${dueClass}">${formatDate(card.due)}</span>`);
-      if (checkHtml) metaParts.push(checkHtml);
-      if (metaParts.length) metaHtml = `<div class="card-meta">${metaParts.join('')}</div>`;
-
-      cardEl.innerHTML = `${labelsHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
-
-      // Click to open modal
-      cardEl.addEventListener('click', () => openCardModal(card.board, card.list, card.slug));
-
-      // Drag events
-      cardEl.addEventListener('dragstart', (e) => {
-        cardEl.classList.add('dragging');
-        e.dataTransfer.setData('text/plain', JSON.stringify({
-          card: card.slug, board: card.board, list: card.list,
-        }));
-        e.dataTransfer.effectAllowed = 'move';
-      });
-      cardEl.addEventListener('dragend', () => {
-        cardEl.classList.remove('dragging');
-        document.querySelectorAll('.column-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
-      });
-
-      cardsContainer.appendChild(cardEl);
+      setupDropZone(cardsContainer);
+      columnsContainer.appendChild(col);
     }
 
-    // Drop zone events
-    cardsContainer.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      cardsContainer.classList.add('drag-over');
-    });
-    cardsContainer.addEventListener('dragleave', (e) => {
-      if (!cardsContainer.contains(e.relatedTarget)) {
-        cardsContainer.classList.remove('drag-over');
-      }
-    });
-    cardsContainer.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      cardsContainer.classList.remove('drag-over');
-      let dragData;
-      try { dragData = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
-      const targetList = cardsContainer.dataset.list;
-      const afterEl = getDragAfterElement(cardsContainer, e.clientY);
-      let position = -1;
-      if (afterEl) {
-        const allCards = [...cardsContainer.querySelectorAll('.card:not(.dragging)')];
-        position = allCards.indexOf(afterEl);
-      }
-      try {
-        await api.put(`/api/cards/${dragData.board}/${dragData.list}/${dragData.card}/move`, {
-          target_list: targetList,
-          position: position,
-        });
-        await renderBoard();
-      } catch (err) {
-        console.error('Move failed:', err);
-      }
-    });
-
-    container.appendChild(col);
+    container.appendChild(lane);
   }
+}
+
+function createCardElement(card) {
+  const cardEl = document.createElement('div');
+  cardEl.className = 'card';
+  cardEl.draggable = true;
+  cardEl.dataset.card = card.slug;
+  cardEl.dataset.board = card.board;
+  cardEl.dataset.list = card.list;
+
+  const labels = Array.isArray(card.labels) ? card.labels : [];
+  let labelsHtml = '';
+  if (labels.length > 0) {
+    labelsHtml = '<div class="card-labels">' +
+      labels.map(l => `<div class="card-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('') +
+      '</div>';
+  }
+
+  const cl = parseChecklistFromBody(card);
+  let checkHtml = '';
+  if (cl.total > 0) {
+    const pct = Math.round((cl.done / cl.total) * 100);
+    checkHtml = `<span class="card-checklist-bar">
+      <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
+      <span>${cl.done}/${cl.total}</span>
+    </span>`;
+  }
+
+  const dueClass = card.due && isOverdue(card.due) ? 'overdue' : '';
+  let metaHtml = '';
+  const metaParts = [];
+  if (card.assignee) metaParts.push(`<span class="card-assignee">${escHtml(card.assignee)}</span>`);
+  if (card.due) metaParts.push(`<span class="card-due ${dueClass}">${formatDate(card.due)}</span>`);
+  if (checkHtml) metaParts.push(checkHtml);
+  if (metaParts.length) metaHtml = `<div class="card-meta">${metaParts.join('')}</div>`;
+
+  cardEl.innerHTML = `${labelsHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
+
+  cardEl.addEventListener('click', () => openCardModal(card.board, card.list, card.slug));
+  cardEl.addEventListener('dragstart', (e) => {
+    cardEl.classList.add('dragging');
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      card: card.slug, board: card.board, list: card.list,
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  cardEl.addEventListener('dragend', () => {
+    cardEl.classList.remove('dragging');
+    document.querySelectorAll('.column-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
+  });
+
+  return cardEl;
+}
+
+function setupDropZone(cardsContainer) {
+  cardsContainer.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    cardsContainer.classList.add('drag-over');
+  });
+  cardsContainer.addEventListener('dragleave', (e) => {
+    if (!cardsContainer.contains(e.relatedTarget)) {
+      cardsContainer.classList.remove('drag-over');
+    }
+  });
+  cardsContainer.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    cardsContainer.classList.remove('drag-over');
+    let dragData;
+    try { dragData = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
+    const targetList = cardsContainer.dataset.list;
+    const targetBoard = cardsContainer.dataset.board;
+    const afterEl = getDragAfterElement(cardsContainer, e.clientY);
+    let position = -1;
+    if (afterEl) {
+      const allCards = [...cardsContainer.querySelectorAll('.card:not(.dragging)')];
+      position = allCards.indexOf(afterEl);
+    }
+    try {
+      await api.put(`/api/cards/${dragData.board}/${dragData.list}/${dragData.card}/move`, {
+        target_list: targetList,
+        target_board: targetBoard,
+        position: position,
+      });
+      await renderBoard();
+    } catch (err) {
+      console.error('Move failed:', err);
+    }
+  });
 }
 
 /* ================================================================
