@@ -333,6 +333,7 @@ a { color: #0052cc; text-decoration: none; }
 .dash-section-title.overdue { color: #e74c3c; border-color: #e74c3c; }
 .dash-section-title.today { color: #0052cc; border-color: #0052cc; }
 .dash-section-title.week { color: #00875a; border-color: #00875a; }
+.dash-section-title.all { color: #5e6c84; border-color: #5e6c84; }
 .dash-group-title {
   font-size: 12px;
   font-weight: 600;
@@ -1345,10 +1346,25 @@ async function renderDashboard() {
     return html;
   }
 
+  // Fetch all cards for the "All" section
+  let allCards = [];
+  try {
+    for (const board of state.boards) {
+      const bd = await api.get('/api/boards/' + board.slug);
+      const lists = bd.lists || {};
+      for (const listSlug of ['ideas', 'backlog', 'in-progress', 'done']) {
+        for (const card of (lists[listSlug] || [])) {
+          allCards.push(card);
+        }
+      }
+    }
+  } catch {}
+
   container.innerHTML =
     renderSection('Overdue', 'overdue', data.overdue || []) +
     renderSection('Today', 'today', data.today || []) +
-    renderSection('This Week', 'week', data.this_week || []);
+    renderSection('This Week', 'week', data.this_week || []) +
+    renderSection('All', 'all', allCards);
 
   container.querySelectorAll('.dash-card').forEach(el => {
     el.addEventListener('click', () => {
