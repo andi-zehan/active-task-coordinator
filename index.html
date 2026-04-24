@@ -195,12 +195,70 @@ a { color: #0052cc; text-decoration: none; }
 .view-container.active { display: block; }
 
 /* ── Board View ───────────────────────────────────────────────── */
+.board-layout {
+  display: flex;
+  align-items: flex-start;
+}
 .board-view {
   padding: 16px;
   min-height: calc(100vh - 100px);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  flex: 1;
+}
+.lane-sidebar {
+  position: sticky;
+  top: 60px;
+  width: 180px;
+  flex-shrink: 0;
+  padding: 12px 8px;
+  margin-top: 16px;
+  margin-right: 12px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  font-size: 12px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+.lane-sidebar-title {
+  font-weight: 700;
+  font-size: 11px;
+  color: #5e6c84;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 8px 8px;
+}
+.lane-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #172b4d;
+}
+.lane-sidebar-item:hover { background: #f4f5f7; }
+.lane-sidebar-item .sidebar-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.lane-sidebar-item .sidebar-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lane-sidebar-item .sidebar-count {
+  background: #e4e6ea;
+  color: #5e6c84;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 .swimlane {
   margin-bottom: 24px;
@@ -972,7 +1030,10 @@ a { color: #0052cc; text-decoration: none; }
 
 <!-- ── View Containers ────────────────────────────────────────── -->
 <div class="view-container active" id="view-board">
-  <div class="board-view" id="board-columns"></div>
+  <div class="board-layout">
+    <div class="board-view" id="board-columns"></div>
+    <div class="lane-sidebar" id="lane-sidebar"></div>
+  </div>
 </div>
 <div class="view-container" id="view-dashboard">
   <div class="dashboard-view" id="dashboard-content"></div>
@@ -1463,6 +1524,27 @@ async function renderBoard() {
   }
 
   setupSwimlaneDrag(container);
+
+  const sidebar = document.getElementById('lane-sidebar');
+  sidebar.innerHTML = '<div class="lane-sidebar-title">Lanes</div>';
+  container.querySelectorAll('.swimlane').forEach(lane => {
+    const slug = lane.dataset.board;
+    const name = lane.querySelector('.swimlane-header-name')?.textContent || slug;
+    const color = lane.querySelector('.swimlane-color')?.style.background || '#4A90D9';
+    const count = lane.querySelector('.swimlane-card-count')?.textContent || '0';
+    const item = document.createElement('div');
+    item.className = 'lane-sidebar-item';
+    item.innerHTML = `
+      <div class="sidebar-color" style="background:${color}"></div>
+      <span class="sidebar-name">${escHtml(name)}</span>
+      <span class="sidebar-count">${count}</span>
+    `;
+    item.addEventListener('click', () => {
+      const y = lane.getBoundingClientRect().top + window.scrollY - 60;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    });
+    sidebar.appendChild(item);
+  });
 }
 
 function setupSwimlaneDrag(container) {
