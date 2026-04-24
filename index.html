@@ -1582,7 +1582,11 @@ function createCardElement(card) {
 
   cardEl.innerHTML = `${labelsHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
 
-  cardEl.addEventListener('click', () => openCardModal(card.board, card.list, card.slug));
+  cardEl.addEventListener('click', () => {
+    const currentBoard = cardEl.dataset.board;
+    const currentList = cardEl.closest('.column-cards')?.dataset.list || card.list;
+    openCardModal(currentBoard, currentList, card.slug);
+  });
   cardEl.addEventListener('dragstart', (e) => {
     cardEl.classList.add('dragging');
     const currentBoard = cardEl.dataset.board;
@@ -1617,10 +1621,11 @@ function showDropIndicator(container, y) {
   const indicator = document.createElement('div');
   indicator.className = 'card-drop-indicator';
   const afterEl = getDragAfterElement(container, y);
+  const addBtn = container.querySelector('.column-add-card');
   if (afterEl) {
     container.insertBefore(indicator, afterEl);
   } else {
-    container.appendChild(indicator);
+    container.insertBefore(indicator, addBtn);
   }
 }
 
@@ -1662,10 +1667,11 @@ function setupDropZone(cardsContainer) {
       const sourceContainer = draggedCard.closest('.column-cards');
       draggedCard.classList.remove('dragging');
       draggedCard.dataset.board = targetBoard;
+      const addBtn = cardsContainer.querySelector('.column-add-card');
       if (afterEl) {
         cardsContainer.insertBefore(draggedCard, afterEl);
       } else {
-        cardsContainer.appendChild(draggedCard);
+        cardsContainer.insertBefore(draggedCard, addBtn);
       }
       draggedCard.classList.add('card-settling');
       draggedCard.addEventListener('animationend', () => draggedCard.classList.remove('card-settling'), { once: true });
