@@ -198,13 +198,15 @@ a { color: #0052cc; text-decoration: none; }
 .board-view {
   padding: 16px;
   min-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .swimlane {
   margin-bottom: 24px;
   background: #e4e6ea;
   border-radius: 10px;
   padding: 12px;
-  display: inline-block;
 }
 .swimlane-header {
   display: flex;
@@ -222,6 +224,31 @@ a { color: #0052cc; text-decoration: none; }
   border-radius: 4px;
 }
 .swimlane-header-name:hover { background: #ebecf0; }
+.swimlane-toggle {
+  cursor: pointer;
+  font-size: 14px;
+  color: #5e6c84;
+  user-select: none;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.swimlane.collapsed .swimlane-toggle { transform: rotate(-90deg); }
+.swimlane.collapsed .swimlane-columns { display: none; }
+.swimlane.collapsed { padding: 8px 12px; }
+.swimlane.collapsed .swimlane-header { padding-bottom: 0; }
+.swimlane.collapsed .swimlane-drag-handle,
+.swimlane.collapsed .swimlane-color,
+.swimlane.collapsed .board-edit-popover { display: none; }
+.swimlane.collapsed { cursor: grab; }
+.swimlane.collapsed:active { cursor: grabbing; }
+.swimlane-card-count {
+  background: #c1c7d0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
 .board-edit-popover {
   position: absolute; top: 100%; left: 20px; z-index: 50;
   background: #fff; border: 1px solid #dfe1e6; border-radius: 8px;
@@ -1332,6 +1359,7 @@ async function renderBoard() {
     const lists = boardData.lists || {};
     const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
     const boardColor = boardData.color || '#4A90D9';
+    const totalCards = listOrder.reduce((sum, l) => sum + (lists[l] || []).length, 0);
 
     const lane = document.createElement('div');
     lane.className = 'swimlane';
@@ -1340,7 +1368,9 @@ async function renderBoard() {
       <div class="swimlane-header">
         <div class="swimlane-drag-handle" title="Drag to reorder">&#x2630;</div>
         <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
+        <span class="swimlane-toggle">&#x25BE;</span>
         <span class="swimlane-header-name" data-board="${escHtml(boardInfo.slug)}">${escHtml(boardData.name || boardInfo.slug)}</span>
+        <span class="swimlane-card-count">${totalCards}</span>
         <div class="board-edit-popover" data-board="${escHtml(boardInfo.slug)}">
           <label>Board Name</label>
           <input type="text" class="be-name" value="${escHtml(boardData.name || '')}" />
@@ -1351,7 +1381,25 @@ async function renderBoard() {
       <div class="swimlane-columns"></div>
     `;
 
+    const collapsedSet = JSON.parse(localStorage.getItem('atc-collapsed-lanes') || '[]');
+    if (collapsedSet.includes(boardInfo.slug)) lane.classList.add('collapsed');
+
     const header = lane.querySelector('.swimlane-header');
+    const toggle = header.querySelector('.swimlane-toggle');
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      lane.classList.toggle('collapsed');
+      const stored = JSON.parse(localStorage.getItem('atc-collapsed-lanes') || '[]');
+      const slug = boardInfo.slug;
+      if (lane.classList.contains('collapsed')) {
+        if (!stored.includes(slug)) stored.push(slug);
+      } else {
+        const idx = stored.indexOf(slug);
+        if (idx !== -1) stored.splice(idx, 1);
+      }
+      localStorage.setItem('atc-collapsed-lanes', JSON.stringify(stored));
+    });
+
     const nameEl = header.querySelector('.swimlane-header-name');
     const popover = header.querySelector('.board-edit-popover');
 
@@ -1420,11 +1468,17 @@ async function renderBoard() {
 function setupSwimlaneDrag(container) {
   let draggedLane = null;
 
-  container.querySelectorAll('.swimlane-drag-handle').forEach(handle => {
-    const lane = handle.closest('.swimlane');
+  container.querySelectorAll('.swimlane').forEach(lane => {
+    const handle = lane.querySelector('.swimlane-drag-handle');
 
     handle.addEventListener('mousedown', () => {
       lane.draggable = true;
+    });
+
+    lane.addEventListener('mousedown', (e) => {
+      if (lane.classList.contains('collapsed') && !e.target.closest('.swimlane-toggle') && !e.target.closest('.swimlane-header-name')) {
+        lane.draggable = true;
+      }
     });
 
     lane.addEventListener('dragstart', (e) => {
