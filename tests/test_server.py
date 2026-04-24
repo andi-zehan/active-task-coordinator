@@ -370,16 +370,32 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_dashboard(self):
         today_str = str(date.today())
-        tomorrow_str = str(date.today() + timedelta(days=3))
+        days_until_sunday = 6 - date.today().weekday()
+        this_week_str = str(date.today() + timedelta(days=1)) if days_until_sunday > 0 else None
+        next_week_str = str(date.today() + timedelta(days=days_until_sunday + 1))
+        later_str = str(date.today() + timedelta(days=days_until_sunday + 8))
         past_str = str(date.today() - timedelta(days=2))
         # Card due today
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/ideas/cards', {
                 'title': 'Today Card', 'due': today_str})
         # Card due this week
+        if this_week_str:
+            make_request_port(8091, 'POST',
+                '/api/boards/agg-board/lists/backlog/cards', {
+                    'title': 'Week Card', 'due': this_week_str})
+        # Card due next week
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/backlog/cards', {
-                'title': 'Week Card', 'due': tomorrow_str})
+                'title': 'Next Week Card', 'due': next_week_str})
+        # Card due later than next week
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/backlog/cards', {
+                'title': 'Later Card', 'due': later_str})
+        # Card with no due date
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/backlog/cards', {
+                'title': 'Someday Card'})
         # Overdue card
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/in-progress/cards', {
@@ -388,8 +404,17 @@ class TestAggregationAPI(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(data['today']), 1)
         self.assertEqual(data['today'][0]['title'], 'Today Card')
-        self.assertEqual(len(data['this_week']), 1)
-        self.assertEqual(data['this_week'][0]['title'], 'Week Card')
+        this_week_titles = [c['title'] for c in data['this_week']]
+        self.assertEqual(len(data['this_week']), 1 if this_week_str else 0)
+        if this_week_str:
+            self.assertIn('Week Card', this_week_titles)
+        self.assertNotIn('Next Week Card', this_week_titles)
+        self.assertEqual(len(data['next_week']), 1)
+        self.assertEqual(data['next_week'][0]['title'], 'Next Week Card')
+        self.assertEqual(len(data['later']), 1)
+        self.assertEqual(data['later'][0]['title'], 'Later Card')
+        self.assertEqual(len(data['someday']), 1)
+        self.assertEqual(data['someday'][0]['title'], 'Someday Card')
         self.assertEqual(len(data['overdue']), 1)
         self.assertEqual(data['overdue'][0]['title'], 'Overdue Card')
 

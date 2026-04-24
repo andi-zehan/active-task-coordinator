@@ -522,23 +522,59 @@ a { color: #0052cc; text-decoration: none; }
 /* ── Dashboard View ───────────────────────────────────────────── */
 .dashboard-view {
   padding: 24px;
-  max-width: 900px;
+  max-width: 1280px;
   margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
 }
 .dash-section {
-  margin-bottom: 28px;
+  background: #e4e6ea;
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 0;
 }
+.dash-section.overdue { background: #A61C3C; }
+.dash-section.today { background: #92BFB1; }
+.dash-section.week { background: #F4AC45; }
+.dash-section.next-week { background: #3E6F8E; }
+.dash-section.later { background: #694A38; }
+.dash-section.someday { background: #DAD6D6; }
 .dash-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
   font-weight: 700;
-  margin-bottom: 12px;
-  padding-bottom: 6px;
+  margin-bottom: 10px;
+  padding: 0 6px 8px;
   border-bottom: 2px solid #dfe1e6;
 }
-.dash-section-title.overdue { color: #e74c3c; border-color: #e74c3c; }
-.dash-section-title.today { color: #0052cc; border-color: #0052cc; }
-.dash-section-title.week { color: #00875a; border-color: #00875a; }
-.dash-section-title.all { color: #5e6c84; border-color: #5e6c84; }
+.dash-section-title.overdue,
+.dash-section-title.next-week,
+.dash-section-title.later {
+  color: #fff;
+  border-color: rgba(255,255,255,0.45);
+}
+.dash-section-title.today,
+.dash-section-title.week,
+.dash-section-title.someday {
+  color: #172b4d;
+  border-color: rgba(23,43,77,0.25);
+}
+.dash-section-card-count {
+  background: rgba(255,255,255,0.35);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+.dash-section.today .dash-section-card-count,
+.dash-section.week .dash-section-card-count,
+.dash-section.someday .dash-section-card-count {
+  background: rgba(23,43,77,0.18);
+}
 .dash-group-title {
   font-size: 12px;
   font-weight: 600;
@@ -546,6 +582,14 @@ a { color: #0052cc; text-decoration: none; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 12px 0 6px;
+}
+.dash-section.overdue .dash-group-title,
+.dash-section.next-week .dash-group-title,
+.dash-section.later .dash-group-title,
+.dash-section.overdue .dash-empty,
+.dash-section.next-week .dash-empty,
+.dash-section.later .dash-empty {
+  color: rgba(255,255,255,0.78);
 }
 .dash-card {
   display: flex;
@@ -566,7 +610,13 @@ a { color: #0052cc; text-decoration: none; }
 .dash-card .dash-due { font-size: 12px; color: #5e6c84; }
 .dash-card .dash-due.overdue { color: #e74c3c; font-weight: 600; }
 .dash-card .dash-list { font-size: 11px; color: #5e6c84; background: #f4f5f7; padding: 1px 6px; border-radius: 3px; }
-.dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 0; }
+.dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 6px; }
+
+@media (max-width: 900px) {
+  .dashboard-view {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ── Calendar View ────────────────────────────────────────────── */
 .calendar-view {
@@ -1219,7 +1269,8 @@ function isDueThisWeek(dateStr) {
   today.setHours(0,0,0,0);
   const due = new Date(dateStr + 'T00:00:00');
   const weekEnd = new Date(today);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const daysUntilSunday = (7 - today.getDay()) % 7;
+  weekEnd.setDate(weekEnd.getDate() + daysUntilSunday);
   return due > today && due <= weekEnd;
 }
 
@@ -1819,10 +1870,9 @@ async function renderDashboard() {
   }
 
   function renderSection(title, cssClass, cards) {
-    if (cards.length === 0 && cssClass === 'overdue') return '';
     const groups = groupByBoard(cards);
-    let html = `<div class="dash-section">
-      <div class="dash-section-title ${cssClass}">${title} (${cards.length})</div>`;
+    let html = `<div class="dash-section ${cssClass}">
+      <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span></div>`;
     if (cards.length === 0) {
       html += '<div class="dash-empty">No cards</div>';
     } else {
@@ -1845,25 +1895,13 @@ async function renderDashboard() {
     return html;
   }
 
-  // Fetch all cards for the "All" section
-  let allCards = [];
-  try {
-    for (const board of state.boards) {
-      const bd = await api.get('/api/boards/' + board.slug);
-      const lists = bd.lists || {};
-      for (const listSlug of ['ideas', 'backlog', 'in-progress', 'done']) {
-        for (const card of (lists[listSlug] || [])) {
-          allCards.push(card);
-        }
-      }
-    }
-  } catch {}
-
   container.innerHTML =
     renderSection('Overdue', 'overdue', data.overdue || []) +
     renderSection('Today', 'today', data.today || []) +
     renderSection('This Week', 'week', data.this_week || []) +
-    renderSection('All', 'all', allCards);
+    renderSection('Next Week', 'next-week', data.next_week || []) +
+    renderSection('Later', 'later', data.later || []) +
+    renderSection('Someday', 'someday', data.someday || []);
 
   container.querySelectorAll('.dash-card').forEach(el => {
     el.addEventListener('click', () => {
@@ -1894,7 +1932,7 @@ async function renderCalendar() {
   // Calendar math
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
-  const startDow = firstDay.getDay(); // 0=Sun
+  const startDow = (firstDay.getDay() + 6) % 7; // 0=Mon
   const daysInMonth = lastDay.getDate();
 
   // Group cards by day
@@ -1914,7 +1952,7 @@ async function renderCalendar() {
     </div>
     <div class="calendar-grid">
   `;
-  const dayHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dayHeaders = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   for (const dh of dayHeaders) {
     html += `<div class="cal-day-header">${dh}</div>`;
   }
@@ -2117,7 +2155,7 @@ function renderModal(card) {
     </div>
     <div class="modal-field-row">
       <span class="modal-field-label">Due Date</span>
-      <div class="modal-field-value"><input type="date" id="modal-due" value="${escHtml(card.due || '')}" /></div>
+      <div class="modal-field-value"><input type="date" id="modal-due" lang="de-DE" value="${escHtml(card.due || '')}" /></div>
     </div>
   </div>`;
 

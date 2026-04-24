@@ -640,21 +640,35 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _handle_dashboard(self):
         today_date = date.today()
-        week_end = today_date + timedelta(days=7)
+        week_end = today_date + timedelta(days=6 - today_date.weekday())
+        next_week_end = week_end + timedelta(days=7)
         all_cards = self._get_all_cards()
-        result = {'today': [], 'this_week': [], 'overdue': []}
+        result = {
+            'today': [],
+            'this_week': [],
+            'next_week': [],
+            'later': [],
+            'someday': [],
+            'overdue': [],
+        }
         for card in all_cards:
             due = card.get('due', '')
             if not due:
+                result['someday'].append(card)
                 continue
             try:
                 due_date = date.fromisoformat(due)
             except (ValueError, TypeError):
+                result['someday'].append(card)
                 continue
             if due_date == today_date:
                 result['today'].append(card)
             elif today_date < due_date <= week_end:
                 result['this_week'].append(card)
+            elif week_end < due_date <= next_week_end:
+                result['next_week'].append(card)
+            elif due_date > next_week_end:
+                result['later'].append(card)
             elif due_date < today_date:
                 result['overdue'].append(card)
         self._send_json(result)
