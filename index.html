@@ -273,6 +273,14 @@ a { color: #0052cc; text-decoration: none; }
   display: flex;
   flex-direction: column;
 }
+.board-column[data-list="ideas"]       { background: #F4A261; }
+.board-column[data-list="backlog"]     { background: #E9C46A; }
+.board-column[data-list="in-progress"] { background: #264653; }
+.board-column[data-list="done"]        { background: #2A9D8F; }
+.board-column[data-list="in-progress"] .column-header { color: #a0b8c4; }
+.board-column[data-list="in-progress"] .column-header .card-count { background: rgba(255,255,255,0.15); color: #a0b8c4; }
+.board-column[data-list="done"] .column-header { color: #b8e0d8; }
+.board-column[data-list="done"] .column-header .card-count { background: rgba(255,255,255,0.15); color: #b8e0d8; }
 .column-header {
   display: flex;
   align-items: center;
@@ -297,10 +305,18 @@ a { color: #0052cc; text-decoration: none; }
   overflow-y: auto;
   min-height: 40px;
   padding: 2px;
+  padding-bottom: 60px;
 }
 .column-cards.drag-over {
   background: rgba(0,82,204,0.06);
   border-radius: 6px;
+}
+.card-drop-indicator {
+  height: 2px;
+  background: #0052cc;
+  border-radius: 1px;
+  margin: 2px 0;
+  pointer-events: none;
 }
 .card {
   background: #fff;
@@ -316,7 +332,14 @@ a { color: #0052cc; text-decoration: none; }
   transform: translateY(-1px);
 }
 .card.dragging {
-  opacity: 0.5;
+  opacity: 0.4;
+}
+.card.card-settling {
+  animation: cardSettle 0.25s ease-out;
+}
+@keyframes cardSettle {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 .card .card-labels {
   display: flex;
@@ -1343,6 +1366,7 @@ async function renderBoard() {
       const cards = applyFilters(rawCards);
       const col = document.createElement('div');
       col.className = 'board-column';
+      col.dataset.list = listSlug;
       col.innerHTML = `
         <div class="column-header">
           <span>${formatListName(listSlug)}</span>
@@ -1479,17 +1503,43 @@ function createCardElement(card) {
   cardEl.addEventListener('click', () => openCardModal(card.board, card.list, card.slug));
   cardEl.addEventListener('dragstart', (e) => {
     cardEl.classList.add('dragging');
+    const currentBoard = cardEl.dataset.board;
+    const currentList = cardEl.closest('.column-cards')?.dataset.list || card.list;
     e.dataTransfer.setData('text/plain', JSON.stringify({
-      card: card.slug, board: card.board, list: card.list,
+      card: card.slug, board: currentBoard, list: currentList,
     }));
     e.dataTransfer.effectAllowed = 'move';
   });
   cardEl.addEventListener('dragend', () => {
     cardEl.classList.remove('dragging');
     document.querySelectorAll('.column-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
+    removeDropIndicators();
   });
 
   return cardEl;
+}
+
+function updateCardCount(cardsContainer) {
+  const col = cardsContainer.closest('.board-column');
+  if (!col) return;
+  const countEl = col.querySelector('.card-count');
+  if (countEl) countEl.textContent = cardsContainer.querySelectorAll('.card').length;
+}
+
+function removeDropIndicators() {
+  document.querySelectorAll('.card-drop-indicator').forEach(el => el.remove());
+}
+
+function showDropIndicator(container, y) {
+  removeDropIndicators();
+  const indicator = document.createElement('div');
+  indicator.className = 'card-drop-indicator';
+  const afterEl = getDragAfterElement(container, y);
+  if (afterEl) {
+    container.insertBefore(indicator, afterEl);
+  } else {
+    container.appendChild(indicator);
+  }
 }
 
 function setupDropZone(cardsContainer) {
@@ -1500,10 +1550,12 @@ function setupDropZone(cardsContainer) {
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     cardsContainer.classList.add('drag-over');
+    showDropIndicator(cardsContainer, e.clientY);
   });
   cardsContainer.addEventListener('dragleave', (e) => {
     if (!cardsContainer.contains(e.relatedTarget)) {
       cardsContainer.classList.remove('drag-over');
+      removeDropIndicators();
     }
   });
   cardsContainer.addEventListener('drop', async (e) => {
@@ -1511,6 +1563,7 @@ function setupDropZone(cardsContainer) {
     e.preventDefault();
     e.stopPropagation();
     cardsContainer.classList.remove('drag-over');
+    removeDropIndicators();
     let dragData;
     try { dragData = JSON.parse(e.dataTransfer.getData('text/plain')); } catch { return; }
     const targetList = cardsContainer.dataset.list;
@@ -1521,15 +1574,32 @@ function setupDropZone(cardsContainer) {
       const allCards = [...cardsContainer.querySelectorAll('.card:not(.dragging)')];
       position = allCards.indexOf(afterEl);
     }
+
+    const draggedCard = document.querySelector(`.card[data-card="${dragData.card}"][data-board="${dragData.board}"]`);
+    if (draggedCard) {
+      const sourceContainer = draggedCard.closest('.column-cards');
+      draggedCard.classList.remove('dragging');
+      draggedCard.dataset.board = targetBoard;
+      if (afterEl) {
+        cardsContainer.insertBefore(draggedCard, afterEl);
+      } else {
+        cardsContainer.appendChild(draggedCard);
+      }
+      draggedCard.classList.add('card-settling');
+      draggedCard.addEventListener('animationend', () => draggedCard.classList.remove('card-settling'), { once: true });
+      updateCardCount(sourceContainer);
+      updateCardCount(cardsContainer);
+    }
+
     try {
       await api.put(`/api/cards/${dragData.board}/${dragData.list}/${dragData.card}/move`, {
         target_list: targetList,
         target_board: targetBoard,
         position: position,
       });
-      await renderBoard();
     } catch (err) {
       console.error('Move failed:', err);
+      await renderBoard();
     }
   });
 }
