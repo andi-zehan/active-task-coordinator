@@ -3,9 +3,11 @@
 
 import json
 import os
+import platform
 import re
 import shutil
-from datetime import date, timedelta
+import subprocess
+from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -353,6 +355,18 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/search' and method == 'GET':
             return self._handle_search(query)
 
+        # /api/sync/push
+        if path == '/api/sync/push' and method == 'POST':
+            return self._handle_sync_push()
+
+        # /api/sync/pull
+        if path == '/api/sync/pull' and method == 'POST':
+            return self._handle_sync_pull()
+
+        # /api/sync/status
+        if path == '/api/sync/status' and method == 'GET':
+            return self._handle_sync_status()
+
         # Static files (GET only)
         if method == 'GET':
             base = Path(__file__).parent
@@ -680,9 +694,75 @@ class RequestHandler(BaseHTTPRequestHandler):
                 results.append(card)
         self._send_json(results)
 
+    def _handle_sync_push(self):
+        result = git_sync_push()
+        self._send_json(result)
+
+    def _handle_sync_pull(self):
+        result = git_sync_pull()
+        self._send_json(result)
+
+    def _handle_sync_status(self):
+        if not (DATA_DIR / '.git').exists():
+            return self._send_json({'dirty': False})
+        try:
+            r = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=DATA_DIR)
+            self._send_json({'dirty': bool(r.stdout.strip())})
+        except Exception:
+            self._send_json({'dirty': False})
+
+
+def _has_git_remote():
+    try:
+        r = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=DATA_DIR)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
+def git_sync_push():
+    if not (DATA_DIR / '.git').exists():
+        return {'status': 'error', 'message': 'Data directory is not a git repository'}
+    try:
+        subprocess.run(['git', 'add', '-A'], cwd=DATA_DIR, capture_output=True, text=True)
+        status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=DATA_DIR)
+        if not status.stdout.strip():
+            return {'status': 'no-changes', 'message': 'Nothing to sync'}
+        hostname = platform.node()
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M')
+        msg = f"sync from {hostname} at {ts}"
+        subprocess.run(['git', 'commit', '-m', msg], cwd=DATA_DIR, capture_output=True, text=True)
+        if _has_git_remote():
+            r = subprocess.run(['git', 'push', 'origin', 'main'], cwd=DATA_DIR, capture_output=True, text=True)
+            if r.returncode != 0:
+                r = subprocess.run(['git', 'push', 'origin', 'master'], cwd=DATA_DIR, capture_output=True, text=True)
+                if r.returncode != 0:
+                    return {'status': 'error', 'message': f'Push failed: {r.stderr.strip()}'}
+        return {'status': 'ok', 'message': msg}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
+
+def git_sync_pull():
+    if not (DATA_DIR / '.git').exists():
+        return {'status': 'error', 'message': 'Data directory is not a git repository'}
+    if not _has_git_remote():
+        return {'status': 'skipped', 'message': 'No remote configured'}
+    try:
+        r = subprocess.run(['git', 'pull', 'origin', 'main'], cwd=DATA_DIR, capture_output=True, text=True)
+        if r.returncode != 0:
+            r = subprocess.run(['git', 'pull', 'origin', 'master'], cwd=DATA_DIR, capture_output=True, text=True)
+        if r.returncode != 0:
+            return {'status': 'error', 'message': f'Pull failed: {r.stderr.strip()}'}
+        return {'status': 'ok', 'message': r.stdout.strip()}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}
+
 
 if __name__ == '__main__':
     ensure_data_dir()
+    result = git_sync_pull()
+    print(f"Data sync pull: {result['status']} — {result['message']}")
     server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Kanban server running on http://localhost:8080")
     server.serve_forever()

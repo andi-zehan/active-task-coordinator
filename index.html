@@ -136,6 +136,25 @@ a { color: #0052cc; text-decoration: none; }
   transition: background 0.15s;
 }
 .btn-new-card:hover { background: #0065ff; }
+.btn-sync {
+  padding: 5px 12px;
+  background: #f4f5f7;
+  color: #5e6c84;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  width: 120px;
+  text-align: center;
+}
+.btn-sync:hover { background: #ebecf0; color: #172b4d; }
+.btn-sync.syncing { opacity: 0.6; pointer-events: none; }
+.btn-sync.sync-ok { background: #e3fcef; color: #006644; border-color: #abf5d1; }
+.btn-sync.sync-err { background: #ffebe6; color: #bf2600; border-color: #ffbdad; }
+.btn-sync.sync-dirty { background: #e74c3c; color: #fff; border-color: #c0392b; }
+.btn-sync.sync-dirty:hover { background: #c0392b; }
 
 /* ── Filter Bar ───────────────────────────────────────────────── */
 .filter-bar {
@@ -1011,6 +1030,7 @@ a { color: #0052cc; text-decoration: none; }
     <div class="search-dropdown" id="search-dropdown"></div>
   </div>
   <button class="btn-new-card" id="btn-new-card">+ New Card</button>
+  <button class="btn-sync" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
 </div>
 
 <!-- ── Filter Bar ─────────────────────────────────────────────── -->
@@ -2594,6 +2614,46 @@ document.getElementById('nc-title').addEventListener('keydown', (e) => {
 });
 
 document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
+
+document.getElementById('btn-sync').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-sync');
+  btn.classList.add('syncing');
+  btn.textContent = '⟳ Syncing...';
+  try {
+    const result = await api.post('/api/sync/push');
+    btn.classList.remove('syncing');
+    if (result.status === 'ok') {
+      btn.classList.add('sync-ok');
+      btn.textContent = '✓ Synced';
+    } else if (result.status === 'no-changes') {
+      btn.classList.add('sync-ok');
+      btn.textContent = '✓ Up to date';
+    } else {
+      btn.classList.add('sync-err');
+      btn.textContent = '✗ ' + (result.message || 'Sync failed');
+    }
+  } catch (err) {
+    btn.classList.remove('syncing');
+    btn.classList.add('sync-err');
+    btn.textContent = '✗ Sync failed';
+  }
+  setTimeout(() => {
+    btn.classList.remove('sync-ok', 'sync-err');
+    checkSyncStatus();
+  }, 3000);
+});
+
+async function checkSyncStatus() {
+  const btn = document.getElementById('btn-sync');
+  if (btn.classList.contains('syncing') || btn.classList.contains('sync-ok') || btn.classList.contains('sync-err')) return;
+  try {
+    const result = await api.get('/api/sync/status');
+    btn.classList.toggle('sync-dirty', result.dirty);
+    btn.textContent = result.dirty ? '↻ Sync needed' : '↻ Sync';
+  } catch { }
+}
+checkSyncStatus();
+setInterval(checkSyncStatus, 10000);
 
 // Modal close
 document.getElementById('modal-close').addEventListener('click', closeModal);
