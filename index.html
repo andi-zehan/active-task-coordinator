@@ -11,9 +11,9 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
   background: #f4f5f7;
   color: #172b4d;
-  min-width: 1200px;
   font-size: 14px;
   line-height: 1.5;
+  overflow: auto;
 }
 button { cursor: pointer; font: inherit; }
 input, select, textarea { font: inherit; }
@@ -201,6 +201,10 @@ a { color: #0052cc; text-decoration: none; }
 }
 .swimlane {
   margin-bottom: 24px;
+  background: #e4e6ea;
+  border-radius: 10px;
+  padding: 12px;
+  display: inline-block;
 }
 .swimlane-header {
   display: flex;
@@ -261,7 +265,6 @@ a { color: #0052cc; text-decoration: none; }
 .swimlane-columns {
   display: flex;
   gap: 12px;
-  overflow-x: auto;
   align-items: flex-start;
 }
 .board-column {
@@ -305,12 +308,27 @@ a { color: #0052cc; text-decoration: none; }
   overflow-y: auto;
   min-height: 40px;
   padding: 2px;
-  padding-bottom: 60px;
+  padding-bottom: 4px;
 }
 .column-cards.drag-over {
   background: rgba(0,82,204,0.06);
   border-radius: 6px;
 }
+.column-add-card {
+  visibility: hidden;
+  border: none;
+  background: rgba(255,255,255,0.5);
+  color: #5e6c84;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.column-add-card:hover { background: rgba(255,255,255,0.8); color: #172b4d; }
+.column-cards:hover .column-add-card { visibility: visible; }
 .card-drop-indicator {
   height: 2px;
   background: #0052cc;
@@ -361,13 +379,12 @@ a { color: #0052cc; text-decoration: none; }
 .card .card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   font-size: 11px;
   color: #5e6c84;
-  flex-wrap: wrap;
 }
 .card .card-assignee { }
-.card .card-due { }
+.card .card-due { margin-left: auto; }
 .card .card-due.overdue { color: #e74c3c; font-weight: 600; }
 .card .card-checklist-bar {
   display: flex;
@@ -896,7 +913,7 @@ a { color: #0052cc; text-decoration: none; }
 <!-- ── Top Bar ────────────────────────────────────────────────── -->
 <div class="top-bar">
   <span class="app-name">ATC</span>
-  <select id="board-select"></select>
+  <select id="board-select" style="display:none"></select>
   <div class="view-switcher">
     <button data-view="board" class="active">Board</button>
     <button data-view="dashboard">Dashboard</button>
@@ -1372,13 +1389,23 @@ async function renderBoard() {
           <span>${formatListName(listSlug)}</span>
           <span class="card-count">${cards.length}</span>
         </div>
-        <div class="column-cards" data-list="${listSlug}" data-board="${escHtml(boardInfo.slug)}"></div>
+        <div class="column-cards" data-list="${listSlug}" data-board="${escHtml(boardInfo.slug)}">
+        </div>
       `;
       const cardsContainer = col.querySelector('.column-cards');
 
       for (const card of cards) {
         cardsContainer.appendChild(createCardElement(card));
       }
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'column-add-card';
+      addBtn.textContent = '+ New Card';
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openNewCardDialog(boardInfo.slug, listSlug);
+      });
+      cardsContainer.appendChild(addBtn);
 
       setupDropZone(cardsContainer);
       columnsContainer.appendChild(col);
@@ -1490,13 +1517,14 @@ function createCardElement(card) {
     </span>`;
   }
 
-  const dueClass = card.due && isOverdue(card.due) ? 'overdue' : '';
-  let metaHtml = '';
+  const assignee = typeof card.assignee === 'string' ? card.assignee : '';
+  const due = typeof card.due === 'string' ? card.due : '';
+  const dueClass = due && isOverdue(due) ? 'overdue' : '';
   const metaParts = [];
-  if (card.assignee) metaParts.push(`<span class="card-assignee">${escHtml(card.assignee)}</span>`);
-  if (card.due) metaParts.push(`<span class="card-due ${dueClass}">${formatDate(card.due)}</span>`);
+  metaParts.push(`<span class="card-assignee">${assignee ? escHtml(assignee) : '&mdash;'}</span>`);
+  metaParts.push(`<span class="card-due ${dueClass}">${due ? formatDate(due) : '&mdash;'}</span>`);
   if (checkHtml) metaParts.push(checkHtml);
-  if (metaParts.length) metaHtml = `<div class="card-meta">${metaParts.join('')}</div>`;
+  const metaHtml = `<div class="card-meta">${metaParts.join('')}</div>`;
 
   cardEl.innerHTML = `${labelsHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
 
@@ -2356,16 +2384,18 @@ document.getElementById('filter-due').addEventListener('change', (e) => {
 
 // New card button
 // New Card Dialog
-function openNewCardDialog() {
+function openNewCardDialog(preBoard, preList) {
   const overlay = document.getElementById('new-card-overlay');
   const boardSel = document.getElementById('nc-board');
   const hasBoards = state.boards.length > 0;
+  const selectedBoard = preBoard || state.currentBoard;
   boardSel.innerHTML = state.boards.map(b =>
-    `<option value="${escHtml(b.slug)}"${b.slug === state.currentBoard ? ' selected' : ''}>${escHtml(b.name)}</option>`
+    `<option value="${escHtml(b.slug)}"${b.slug === selectedBoard ? ' selected' : ''}>${escHtml(b.name)}</option>`
   ).join('') + '<option value="__new__"' + (!hasBoards ? ' selected' : '') + '>+ New Board...</option>';
   document.getElementById('nc-new-board-fields').style.display = hasBoards ? 'none' : 'block';
   document.getElementById('nc-title').value = '';
   document.getElementById('nc-board-name').value = '';
+  if (preList) document.getElementById('nc-list').value = preList;
   overlay.classList.add('visible');
   setTimeout(() => document.getElementById(hasBoards ? 'nc-title' : 'nc-board-name').focus(), 50);
 }
@@ -2405,12 +2435,13 @@ document.getElementById('nc-submit').addEventListener('click', async () => {
   }
 
   try {
-    await api.post(`/api/boards/${board}/lists/${list}/cards`, { title });
+    const created = await api.post(`/api/boards/${board}/lists/${list}/cards`, { title });
     state.currentBoard = board;
     document.getElementById('board-select').value = board;
     document.getElementById('new-card-overlay').classList.remove('visible');
     await populateFilterOptions();
     await refreshCurrentView();
+    openCardModal(board, list, created.slug);
   } catch (err) {
     alert('Failed to create card: ' + err.message);
   }

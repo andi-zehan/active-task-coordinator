@@ -77,10 +77,16 @@ def parse_frontmatter(text):
             value = kv_match.group(2).strip()
 
             if value == '':
-                meta[key] = {}
-                current_dict_key = key
-                current_key = key
-                current_list = None
+                STRING_FIELDS = {'title', 'assignee', 'due', 'description', 'color', 'name'}
+                if key in STRING_FIELDS:
+                    meta[key] = ''
+                    current_key = key
+                    current_list = None
+                else:
+                    meta[key] = {}
+                    current_dict_key = key
+                    current_key = key
+                    current_list = None
                 continue
 
             if value.startswith('[') and value.endswith(']'):
