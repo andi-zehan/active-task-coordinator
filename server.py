@@ -14,6 +14,7 @@ from urllib.parse import urlparse, parse_qs
 
 DATA_DIR = Path(__file__).parent / "data"
 LISTS = ["ideas", "backlog", "in-progress", "done"]
+DATA_REPO_URL = os.environ.get('ATC_DATA_REPO_URL', 'https://github.com/andi-zehan/atc-content.git')
 
 
 def slugify(title):
@@ -712,6 +713,40 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({'dirty': False})
 
 
+def _is_empty_placeholder_data_dir():
+    if not DATA_DIR.exists():
+        return True
+    if (DATA_DIR / '.git').exists():
+        return False
+
+    files = [p for p in DATA_DIR.rglob('*') if p.is_file() and p.name != '.DS_Store']
+    if not files:
+        return True
+    if len(files) == 1 and files[0].relative_to(DATA_DIR).as_posix() == '_boards-order.json':
+        try:
+            return read_json(files[0]) == []
+        except Exception:
+            return False
+    return False
+
+
+def ensure_data_repo():
+    if (DATA_DIR / '.git').exists():
+        return {'status': 'ok', 'message': 'Data repository exists'}
+    if not _is_empty_placeholder_data_dir():
+        return {
+            'status': 'error',
+            'message': 'data/ exists but is not a git repository. Move it aside before syncing.'
+        }
+    if DATA_DIR.exists():
+        shutil.rmtree(DATA_DIR)
+    r = subprocess.run(['git', 'clone', DATA_REPO_URL, str(DATA_DIR)],
+                       capture_output=True, text=True, cwd=DATA_DIR.parent)
+    if r.returncode != 0:
+        return {'status': 'error', 'message': f'Clone failed: {r.stderr.strip()}'}
+    return {'status': 'ok', 'message': f'Cloned data repository from {DATA_REPO_URL}'}
+
+
 def _has_git_remote():
     try:
         r = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=DATA_DIR)
@@ -744,8 +779,11 @@ def git_sync_push():
 
 
 def git_sync_pull():
-    if not (DATA_DIR / '.git').exists():
-        return {'status': 'error', 'message': 'Data directory is not a git repository'}
+    repo = ensure_data_repo()
+    if repo['status'] != 'ok':
+        return repo
+    if repo['message'].startswith('Cloned data repository'):
+        return repo
     if not _has_git_remote():
         return {'status': 'skipped', 'message': 'No remote configured'}
     try:
@@ -760,9 +798,9 @@ def git_sync_pull():
 
 
 if __name__ == '__main__':
-    ensure_data_dir()
     result = git_sync_pull()
     print(f"Data sync pull: {result['status']} — {result['message']}")
+    ensure_data_dir()
     server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Kanban server running on http://localhost:8080")
     server.serve_forever()
