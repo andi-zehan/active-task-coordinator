@@ -534,12 +534,12 @@ a { color: #0052cc; text-decoration: none; }
   padding: 12px;
   min-width: 0;
 }
-.dash-section.overdue { background: #A61C3C; }
-.dash-section.today { background: #92BFB1; }
-.dash-section.week { background: #F4AC45; }
-.dash-section.next-week { background: #3E6F8E; }
-.dash-section.later { background: #694A38; }
-.dash-section.someday { background: #DAD6D6; }
+.dash-section.overdue { background: #304D6D; }
+.dash-section.today { background: #63ADF2; }
+.dash-section.week { background: #A7CCED; }
+.dash-section.next-week { background: #545E75; }
+.dash-section.later { background: #82A0BC; }
+.dash-section.someday { background: #6B8FB3; }
 .dash-section-title {
   display: flex;
   align-items: center;
@@ -551,15 +551,15 @@ a { color: #0052cc; text-decoration: none; }
   border-bottom: 2px solid #dfe1e6;
 }
 .dash-section-title.overdue,
-.dash-section-title.next-week,
-.dash-section-title.later {
+.dash-section-title.next-week {
   color: #fff;
   border-color: rgba(255,255,255,0.45);
 }
 .dash-section-title.today,
 .dash-section-title.week,
+.dash-section-title.later,
 .dash-section-title.someday {
-  color: #172b4d;
+  color: #0b1f33;
   border-color: rgba(23,43,77,0.25);
 }
 .dash-section-card-count {
@@ -572,6 +572,7 @@ a { color: #0052cc; text-decoration: none; }
 }
 .dash-section.today .dash-section-card-count,
 .dash-section.week .dash-section-card-count,
+.dash-section.later .dash-section-card-count,
 .dash-section.someday .dash-section-card-count {
   background: rgba(23,43,77,0.18);
 }
@@ -585,11 +586,19 @@ a { color: #0052cc; text-decoration: none; }
 }
 .dash-section.overdue .dash-group-title,
 .dash-section.next-week .dash-group-title,
-.dash-section.later .dash-group-title,
 .dash-section.overdue .dash-empty,
-.dash-section.next-week .dash-empty,
-.dash-section.later .dash-empty {
+.dash-section.next-week .dash-empty {
   color: rgba(255,255,255,0.78);
+}
+.dash-section.today .dash-group-title,
+.dash-section.week .dash-group-title,
+.dash-section.later .dash-group-title,
+.dash-section.someday .dash-group-title,
+.dash-section.today .dash-empty,
+.dash-section.week .dash-empty,
+.dash-section.later .dash-empty,
+.dash-section.someday .dash-empty {
+  color: rgba(11,31,51,0.72);
 }
 .dash-card {
   display: flex;
