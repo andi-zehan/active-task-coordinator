@@ -379,6 +379,23 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/llm-config/test' and method == 'POST':
             return self._handle_test_llm_config()
 
+        # /api/notes/analyze
+        if path == '/api/notes/analyze' and method == 'POST':
+            return self._handle_notes_analyze()
+
+        # /api/notes/apply
+        if path == '/api/notes/apply' and method == 'POST':
+            return self._handle_notes_apply()
+
+        # /api/notes/:id
+        m = re.match(r'^/api/notes/([\w\-.]+)$', path)
+        if m and method == 'GET':
+            return self._handle_get_note(m.group(1))
+
+        # /api/janitor/run
+        if path == '/api/janitor/run' and method == 'POST':
+            return self._handle_janitor_run()
+
         # Static files (GET only)
         if method == 'GET':
             base = Path(__file__).parent
@@ -768,6 +785,54 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({'ok': True})
         except Exception as e:
             self._send_json({'ok': False, 'error': str(e)})
+
+    def _handle_notes_analyze(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        text = body.get('text', '').strip()
+        if not text:
+            return self._send_error(400, 'text is required')
+        title = body.get('title', '')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+        try:
+            result = notes.analyze(text, title, model=cfg['model'], client=client)
+        except notes.LLMResponseError as e:
+            return self._send_error(502, str(e))
+        self._send_json(result)
+
+    def _handle_notes_apply(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        note_id = body.get('note_id', '')
+        operations = body.get('operations', [])
+        if not note_id or not isinstance(operations, list):
+            return self._send_error(400, 'note_id and operations required')
+        result = notes.apply_operations(operations, note_id)
+        self._send_json(result)
+
+    def _handle_get_note(self, note_id):
+        text = notes.read_note(note_id)
+        if text is None:
+            return self._send_error(404, 'note not found')
+        body = text.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/markdown; charset=utf-8')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_janitor_run(self):
+        result = janitor.run_all()
+        self._send_json(result)
 
 
 def _is_empty_placeholder_data_dir():

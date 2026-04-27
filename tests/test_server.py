@@ -506,5 +506,98 @@ class TestLLMConfigEndpoints(unittest.TestCase):
         self.assertEqual(body["model"], "claude-haiku-4-5")
 
 
+class TestNotesEndpoints(unittest.TestCase):
+    def setUp(self):
+        import notes as notes_mod
+        self.notes_mod = notes_mod
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        notes_mod.NOTES_DIR = Path(self.tmp.name) / "notes"
+        # Stub the LLM client
+        fake_response_text = json.dumps({
+            "summary": "Talked about X.",
+            "operations": [
+                {"op": "create_card", "board": "alpha", "list": "backlog",
+                 "title": "Do thing", "confidence": "high", "reason": "explicit"}
+            ],
+        })
+        class FakeClient:
+            class messages:
+                @staticmethod
+                def create(**kwargs):
+                    return type("R", (), {
+                        "content": [type("B", (), {"text": fake_response_text, "type": "text"})()]
+                    })()
+        # Make get_client return our fake
+        import llm_config
+        self._orig_get_client = llm_config.get_client
+        llm_config.get_client = lambda: FakeClient()
+
+        # Set up an alpha board
+        board_dir = self.data_dir / "boards" / "alpha"
+        board_dir.mkdir(parents=True)
+        (board_dir / "_board.md").write_text(
+            "---\nname: Alpha\ncolor: '#000'\n---\n", encoding="utf-8")
+        for lst in ("ideas", "backlog", "in-progress", "done"):
+            (board_dir / lst).mkdir()
+            (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
+        (self.data_dir / "_boards-order.json").write_text('["alpha"]', encoding="utf-8")
+
+        self.server = HTTPServer(('127.0.0.1', 0), server.RequestHandler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join()
+        import llm_config
+        llm_config.get_client = self._orig_get_client
+        self.tmp.cleanup()
+
+    def test_analyze_returns_operations(self):
+        status, body = make_request_port(self.port, "POST", "/api/notes/analyze",
+            {"text": "We agreed to do thing.", "title": "Q2"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["summary"], "Talked about X.")
+        self.assertEqual(len(body["operations"]), 1)
+        self.assertTrue(body["note_id"].endswith("-q2"))
+
+    def test_get_note(self):
+        status, body = make_request_port(self.port, "POST", "/api/notes/analyze",
+            {"text": "body content", "title": "Topic"})
+        note_id = body["note_id"]
+        # Use raw urlopen because get_note returns text/markdown not JSON
+        import urllib.request
+        with urllib.request.urlopen(f"http://localhost:{self.port}/api/notes/{note_id}") as r:
+            self.assertEqual(r.status, 200)
+            self.assertIn("body content", r.read().decode("utf-8"))
+
+    def test_get_note_404(self):
+        import urllib.request, urllib.error
+        try:
+            urllib.request.urlopen(f"http://localhost:{self.port}/api/notes/nonexistent")
+            self.fail("expected 404")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
+
+    def test_apply_creates_card(self):
+        _, body = make_request_port(self.port, "POST", "/api/notes/analyze",
+            {"text": "x", "title": "T"})
+        note_id = body["note_id"]
+        ops = body["operations"]
+        status, result = make_request_port(self.port, "POST", "/api/notes/apply",
+            {"note_id": note_id, "operations": ops})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["applied"]), 1)
+        # Card now exists
+        status, card = make_request_port(self.port, "GET",
+            "/api/cards/alpha/backlog/do-thing")
+        self.assertEqual(status, 200)
+
+
 if __name__ == '__main__':
     unittest.main()
