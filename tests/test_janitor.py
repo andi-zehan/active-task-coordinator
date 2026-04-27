@@ -103,5 +103,67 @@ class TestSweepDoneCards(unittest.TestCase):
         self.assertTrue((self.data_dir / "boards/alpha/done/bad-date.md").exists())
 
 
+class TestSweepOrphanNotes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        make_board(self.data_dir)
+        self.notes_dir = Path(self.tmp.name) / "notes"
+        self.notes_dir.mkdir()
+        janitor.NOTES_DIR = self.notes_dir
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _write_note(self, note_id: str):
+        (self.notes_dir / f"{note_id}.md").write_text(
+            f"---\ndate: 2026-04-01\ntitle: x\napplied_ops: []\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+
+    def test_unreferenced_note_deleted(self):
+        self._write_note("2026-04-01-orphan")
+        deleted = janitor.sweep_orphan_notes()
+        self.assertEqual(deleted, 1)
+        self.assertFalse((self.notes_dir / "2026-04-01-orphan.md").exists())
+
+    def test_referenced_note_kept(self):
+        self._write_note("2026-04-01-keepme")
+        make_card(self.data_dir, "alpha", "backlog", "linked", "2026-04-25",
+            attachments=[{"name": "src", "url": "/api/notes/2026-04-01-keepme"}])
+        deleted = janitor.sweep_orphan_notes()
+        self.assertEqual(deleted, 0)
+        self.assertTrue((self.notes_dir / "2026-04-01-keepme.md").exists())
+
+    def test_only_attachment_links_count(self):
+        self._write_note("2026-04-01-comment-only")
+        # link is in body comment, not attachments -> still orphan
+        list_dir = self.data_dir / "boards/alpha/backlog"
+        (list_dir / "comment-card.md").write_text(
+            "---\ntitle: c\ncreated: 2026-04-01\nupdated: 2026-04-25\nattachments: []\n---\n\n"
+            "## Description\n\n\n\n## Checklist\n\n\n"
+            "## Comments\n\nSee [note](/api/notes/2026-04-01-comment-only)\n",
+            encoding="utf-8",
+        )
+        order = json.loads((list_dir / "_order.json").read_text())
+        order.append("comment-card")
+        (list_dir / "_order.json").write_text(json.dumps(order), encoding="utf-8")
+        deleted = janitor.sweep_orphan_notes()
+        self.assertEqual(deleted, 1)
+        self.assertFalse((self.notes_dir / "2026-04-01-comment-only.md").exists())
+
+    def test_empty_notes_dir_no_error(self):
+        deleted = janitor.sweep_orphan_notes()
+        self.assertEqual(deleted, 0)
+
+    def test_missing_notes_dir_no_error(self):
+        janitor.NOTES_DIR = self.notes_dir / "does-not-exist"
+        deleted = janitor.sweep_orphan_notes()
+        self.assertEqual(deleted, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

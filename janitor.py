@@ -54,3 +54,48 @@ def sweep_done_cards() -> int:
                 kept.append(slug)
         order_path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
     return deleted
+
+
+def _collect_referenced_note_ids() -> set[str]:
+    """Walk every card across every board and gather note_ids referenced in attachments."""
+    referenced = set()
+    prefix = "/api/notes/"
+    for board in _list_board_slugs():
+        for list_slug in server.LISTS:
+            order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+            if not order_path.exists():
+                continue
+            for slug in json.loads(order_path.read_text(encoding="utf-8")):
+                card = server.read_card(board, list_slug, slug)
+                if card is None:
+                    continue
+                for att in card.get("attachments") or []:
+                    url = att.get("url", "")
+                    if url.startswith(prefix):
+                        referenced.add(url[len(prefix):])
+    return referenced
+
+
+def sweep_orphan_notes() -> int:
+    """Delete notes/ files not referenced by any card attachment.
+
+    Returns the count of deleted notes.
+    """
+    if not NOTES_DIR.exists():
+        return 0
+    referenced = _collect_referenced_note_ids()
+    deleted = 0
+    for note_path in NOTES_DIR.glob("*.md"):
+        note_id = note_path.stem
+        if note_id not in referenced:
+            note_path.unlink()
+            deleted += 1
+    return deleted
+
+
+def run_all() -> dict:
+    """Run both sweeps. Used by /api/janitor/run and the periodic timer."""
+    done = sweep_done_cards()
+    orphans = sweep_orphan_notes()
+    print(f"janitor: deleted {done} done cards, {orphans} orphan notes", flush=True)
+    return {"done_cards_deleted": done, "orphan_notes_deleted": orphans}
