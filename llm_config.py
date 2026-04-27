@@ -5,6 +5,12 @@ A fresh client is built on every call so token rotation is immediate.
 """
 import json
 from pathlib import Path
+import httpx
+import anthropic
+
+
+class NotConfigured(Exception):
+    """Raised when an LLM call is attempted without an auth token configured."""
 
 CONFIG_PATH = Path(__file__).parent / ".llm-config.json"
 
@@ -66,3 +72,21 @@ def public_view() -> dict:
         "tls_verify": cfg["tls_verify"],
         "auth_token": mask_token(cfg["auth_token"]),
     }
+
+
+def get_client():
+    """Build a fresh Anthropic client from the current config.
+
+    Reads the config file on every call so token rotation is immediate.
+    Returns an anthropic.Anthropic instance configured for the corp gateway.
+    """
+    cfg = load()
+    if not cfg["auth_token"]:
+        raise NotConfigured("LLM auth token not configured")
+
+    http_client = httpx.Client(verify=cfg["tls_verify"])
+    return anthropic.Anthropic(
+        base_url=cfg["base_url"],
+        auth_token=cfg["auth_token"],
+        http_client=http_client,
+    )

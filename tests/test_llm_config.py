@@ -86,5 +86,27 @@ class TestPublicView(unittest.TestCase):
         self.assertNotIn("supersecret", json.dumps(view))
 
 
+class TestGetClient(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        llm_config.CONFIG_PATH = Path(self.tmp.name) / ".llm-config.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_unconfigured_raises(self):
+        with self.assertRaises(llm_config.NotConfigured):
+            llm_config.get_client()
+
+    def test_configured_returns_client(self):
+        llm_config.save({
+            "auth_token": "test-token",
+            "base_url": "https://example.com",
+        })
+        client = llm_config.get_client()
+        # Anthropic client exposes .messages
+        self.assertTrue(hasattr(client, "messages"))
+
+
 if __name__ == "__main__":
     unittest.main()
