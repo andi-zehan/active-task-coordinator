@@ -1,7 +1,7 @@
 """Notes-to-cards integration: snapshot, archive, LLM call, apply."""
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import server
@@ -92,3 +92,50 @@ def build_snapshot() -> dict:
             "cards": cards,
         })
     return {"boards": boards, "today": date.today().isoformat()}
+
+
+def _slugify(text: str) -> str:
+    """Convert title to a filename-safe slug. Mirrors server.slugify."""
+    return server.slugify(text)
+
+
+def archive_note(body: str, title: str) -> str:
+    """Save a pasted note to notes/<note_id>.md. Returns the note_id."""
+    NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    today = date.today().isoformat()
+    if title.strip():
+        slug = _slugify(title)
+        display_title = title
+    else:
+        slug = "untitled-" + datetime.now().strftime("%H%M%S")
+        display_title = "Untitled"
+
+    base = f"{today}-{slug}"
+    note_id = base
+    n = 2
+    while (NOTES_DIR / f"{note_id}.md").exists():
+        note_id = f"{base}-{n}"
+        n += 1
+
+    frontmatter = (
+        "---\n"
+        f"date: {today}\n"
+        f"title: {display_title}\n"
+        "applied_ops: []\n"
+        "---\n\n"
+    )
+    (NOTES_DIR / f"{note_id}.md").write_text(frontmatter + body, encoding="utf-8")
+    return note_id
+
+
+_NOTE_ID_RE = re.compile(r"^[\w\-.]+$")
+
+
+def read_note(note_id: str) -> str | None:
+    """Return the raw markdown of an archived note, or None if missing/invalid."""
+    if not _NOTE_ID_RE.match(note_id):
+        return None
+    path = NOTES_DIR / f"{note_id}.md"
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
