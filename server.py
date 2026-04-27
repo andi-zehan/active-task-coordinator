@@ -923,6 +923,23 @@ if __name__ == '__main__':
     result = git_sync_pull()
     print(f"Data sync pull: {result['status']} — {result['message']}")
     ensure_data_dir()
+    # Run janitor once on startup, then every 24 hours in a background thread
+    try:
+        janitor.run_all()
+    except Exception as e:
+        print(f"janitor: startup sweep failed: {e}", flush=True)
+
+    def _periodic_janitor():
+        import time
+        while True:
+            time.sleep(24 * 60 * 60)
+            try:
+                janitor.run_all()
+            except Exception as e:
+                print(f"janitor: periodic sweep failed: {e}", flush=True)
+
+    import threading
+    threading.Thread(target=_periodic_janitor, daemon=True).start()
     server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Kanban server running on http://localhost:8080")
     server.serve_forever()
