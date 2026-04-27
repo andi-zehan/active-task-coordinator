@@ -139,3 +139,117 @@ def read_note(note_id: str) -> str | None:
     if not path.exists():
         return None
     return path.read_text(encoding="utf-8")
+
+
+class LLMResponseError(Exception):
+    """Raised when the LLM response can't be parsed as the expected JSON."""
+
+
+SYSTEM_PROMPT = """You are an assistant that turns meeting notes into kanban card operations.
+
+You will receive:
+1. A snapshot of all kanban boards and their cards (compact JSON).
+2. A meeting note (free-form text).
+
+Produce a JSON object with this exact shape:
+
+{
+  "summary": "1-2 sentence summary of the meeting",
+  "operations": [ ... ]
+}
+
+Each operation is one of:
+
+- {"op": "create_card", "board": "<slug>", "list": "ideas|backlog|in-progress|done",
+   "title": "...", "description": "...", "checklist": ["..."], "due": "YYYY-MM-DD",
+   "assignee": "...", "labels": ["..."], "confidence": "high|med|low", "reason": "..."}
+
+- {"op": "add_comment", "board": "<slug>", "list": "<slug>", "card": "<slug>",
+   "text": "...", "confidence": "...", "reason": "..."}
+
+- {"op": "tick_checklist", "board": "<slug>", "list": "<slug>", "card": "<slug>",
+   "item": "<substring of an existing checklist item>",
+   "confidence": "...", "reason": "..."}
+
+- {"op": "add_checklist_item", "board": "<slug>", "list": "<slug>", "card": "<slug>",
+   "item": "...", "confidence": "...", "reason": "..."}
+
+- {"op": "move_card", "board": "<slug>", "list": "<slug>", "card": "<slug>",
+   "target_list": "ideas|backlog|in-progress|done",
+   "confidence": "...", "reason": "..."}
+
+- {"op": "update_field", "board": "<slug>", "list": "<slug>", "card": "<slug>",
+   "field": "due|assignee|labels", "value": <appropriate type>,
+   "confidence": "...", "reason": "..."}
+
+Rules:
+- Only reference boards, lists, and cards that exist in the snapshot.
+- For new cards, choose a list that fits the work's stage. Default to 'backlog'.
+- Set confidence honestly: 'high' = explicit, 'med' = strongly implied, 'low' = speculative.
+- Always include reason — what in the note made you propose this op.
+- Output ONLY the JSON object. No prose, no markdown fences.
+"""
+
+
+def _extract_json(text: str) -> dict:
+    """Pull a JSON object out of the model's text response."""
+    text = text.strip()
+    # Strip ```json ... ``` fences if present
+    fence = re.match(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise LLMResponseError(f"Could not parse LLM response as JSON: {e}\n---\n{text[:500]}")
+
+
+def analyze(body: str, title: str, *, model: str, client) -> dict:
+    """Archive the note, snapshot the boards, call the LLM, return parsed result.
+
+    Args:
+        body: pasted note text.
+        title: optional user-supplied title.
+        model: Anthropic model ID.
+        client: an Anthropic-compatible client (real or fake-for-tests).
+
+    Returns:
+        {"note_id": str, "summary": str, "operations": [...]}.
+    """
+    note_id = archive_note(body, title)
+    snapshot = build_snapshot()
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        system=[
+            {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        ],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "BOARD SNAPSHOT:\n" + json.dumps(snapshot),
+                        "cache_control": {"type": "ephemeral"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            f"NOTE_ID: {note_id}\n"
+                            f"TODAY: {date.today().isoformat()}\n\n"
+                            f"MEETING NOTE:\n{body}"
+                        ),
+                    },
+                ],
+            },
+        ],
+    )
+
+    text = "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+    parsed = _extract_json(text)
+    parsed["note_id"] = note_id
+    parsed.setdefault("summary", "")
+    parsed.setdefault("operations", [])
+    return parsed

@@ -148,5 +148,80 @@ class TestReadNote(unittest.TestCase):
         self.assertIsNone(notes.read_note("foo/bar"))
 
 
+class FakeMessage:
+    def __init__(self, text):
+        self.content = [type("Block", (), {"text": text, "type": "text"})()]
+
+
+class FakeMessages:
+    def __init__(self, response_text):
+        self._response_text = response_text
+        self.last_kwargs = None
+
+    def create(self, **kwargs):
+        self.last_kwargs = kwargs
+        return FakeMessage(self._response_text)
+
+
+class FakeClient:
+    def __init__(self, response_text):
+        self.messages = FakeMessages(response_text)
+
+
+class TestAnalyze(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        notes.NOTES_DIR = Path(self.tmp.name) / "notes"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_analyze_parses_json_response(self):
+        fake_response = json.dumps({
+            "summary": "Meeting summary",
+            "operations": [
+                {"op": "create_card", "board": "alpha", "list": "backlog",
+                 "title": "New task", "confidence": "high", "reason": "explicit ask"}
+            ],
+        })
+        client = FakeClient(fake_response)
+        result = notes.analyze("note text", "Title", model="claude-opus-4-7", client=client)
+        self.assertEqual(result["summary"], "Meeting summary")
+        self.assertEqual(len(result["operations"]), 1)
+        self.assertEqual(result["operations"][0]["title"], "New task")
+        self.assertTrue(result["note_id"].endswith("-title"))
+
+    def test_analyze_archives_note(self):
+        client = FakeClient('{"summary": "", "operations": []}')
+        result = notes.analyze("note body", "T", model="claude-opus-4-7", client=client)
+        archived = (notes.NOTES_DIR / f"{result['note_id']}.md").read_text(encoding="utf-8")
+        self.assertIn("note body", archived)
+
+    def test_analyze_extracts_json_from_fenced_block(self):
+        fenced = '```json\n{"summary": "x", "operations": []}\n```'
+        client = FakeClient(fenced)
+        result = notes.analyze("body", "T", model="claude-opus-4-7", client=client)
+        self.assertEqual(result["summary"], "x")
+
+    def test_analyze_invalid_json_raises(self):
+        client = FakeClient("this is not json at all")
+        with self.assertRaises(notes.LLMResponseError):
+            notes.analyze("body", "T", model="claude-opus-4-7", client=client)
+
+    def test_analyze_passes_model_and_caching(self):
+        client = FakeClient('{"summary": "", "operations": []}')
+        notes.analyze("body", "T", model="claude-sonnet-4-6", client=client)
+        kwargs = client.messages.last_kwargs
+        self.assertEqual(kwargs["model"], "claude-sonnet-4-6")
+        # System prompt cached
+        sys_block = kwargs["system"][0] if isinstance(kwargs["system"], list) else None
+        self.assertIsNotNone(sys_block)
+        self.assertEqual(sys_block.get("cache_control"), {"type": "ephemeral"})
+
+
 if __name__ == "__main__":
     unittest.main()
