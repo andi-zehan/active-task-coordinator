@@ -204,6 +204,217 @@ def _extract_json(text: str) -> dict:
         raise LLMResponseError(f"Could not parse LLM response as JSON: {e}\n---\n{text[:500]}")
 
 
+NOTE_URL_PREFIX = "/api/notes/"
+
+
+def _today_iso() -> str:
+    return date.today().isoformat()
+
+
+def _append_to_order(board: str, list_slug: str, card_slug: str) -> None:
+    order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+    order = json.loads(order_path.read_text(encoding="utf-8")) if order_path.exists() else []
+    if card_slug not in order:
+        order.append(card_slug)
+    order_path.write_text(json.dumps(order, indent=2), encoding="utf-8")
+
+
+def _remove_from_order(board: str, list_slug: str, card_slug: str) -> None:
+    order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+    if not order_path.exists():
+        return
+    order = json.loads(order_path.read_text(encoding="utf-8"))
+    order = [s for s in order if s != card_slug]
+    order_path.write_text(json.dumps(order, indent=2), encoding="utf-8")
+
+
+def _build_card_body(description: str, checklist: list[str]) -> str:
+    desc = description or ""
+    items = "\n".join(f"- [ ] {item}" for item in (checklist or []))
+    return (
+        f"## Description\n\n{desc}\n\n\n"
+        f"## Checklist\n\n{items}\n\n\n"
+        f"## Comments\n\n"
+    )
+
+
+def _do_create_card(op: dict, note_id: str) -> dict:
+    board = op["board"]
+    list_slug = op["list"]
+    if list_slug not in server.LISTS:
+        raise ValueError(f"invalid list '{list_slug}'")
+    if server.read_board_meta(board) is None:
+        raise ValueError("target board missing")
+    title = op["title"]
+    slug = server.slugify(title)
+    base_slug = slug
+    n = 2
+    while (server.DATA_DIR / "boards" / board / list_slug / f"{slug}.md").exists():
+        slug = f"{base_slug}-{n}"
+        n += 1
+    today = _today_iso()
+    meta = {
+        "title": title,
+        "created": today,
+        "updated": today,
+        "labels": op.get("labels") or [],
+        "due": op.get("due", ""),
+        "assignee": op.get("assignee", ""),
+        "relations": [],
+        "custom_fields": {},
+        "attachments": [
+            {"name": f"Source note: {note_id}", "url": f"{NOTE_URL_PREFIX}{note_id}"}
+        ],
+    }
+    body = _build_card_body(op.get("description", ""), op.get("checklist") or [])
+    server.write_card(board, list_slug, slug, meta, body)
+    _append_to_order(board, list_slug, slug)
+    return {"target": f"{board}/{list_slug}/{slug}"}
+
+
+def _do_add_comment(op: dict, note_id: str) -> dict:
+    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    card = server.read_card(board, list_slug, card_slug)
+    if card is None:
+        raise ValueError("target card missing")
+    body = card["body"]
+    today = _today_iso()
+    note_link = f"_(from [meeting note]({NOTE_URL_PREFIX}{note_id}))_"
+    new_comment = f"\n**{today} - Agent:**\n{op['text']}\n\n{note_link}\n"
+    body = body.rstrip() + "\n" + new_comment
+    card["updated"] = today
+    server.write_card(board, list_slug, card_slug, card, body)
+    return {"target": f"{board}/{list_slug}/{card_slug}"}
+
+
+def _do_tick_checklist(op: dict, note_id: str) -> dict:
+    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    card = server.read_card(board, list_slug, card_slug)
+    if card is None:
+        raise ValueError("target card missing")
+    needle = op["item"].lower()
+    new_lines = []
+    matched = False
+    for line in card["body"].splitlines():
+        m = re.match(r"(\s*)-\s*\[\s\]\s*(.+)$", line)
+        if m and not matched and needle in m.group(2).lower():
+            new_lines.append(f"{m.group(1)}- [x] {m.group(2)}")
+            matched = True
+        else:
+            new_lines.append(line)
+    if not matched:
+        raise ValueError("checklist item not found")
+    card["updated"] = _today_iso()
+    server.write_card(board, list_slug, card_slug, card, "\n".join(new_lines))
+    return {"target": f"{board}/{list_slug}/{card_slug}"}
+
+
+def _do_add_checklist_item(op: dict, note_id: str) -> dict:
+    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    card = server.read_card(board, list_slug, card_slug)
+    if card is None:
+        raise ValueError("target card missing")
+    new_lines = []
+    inserted = False
+    in_checklist = False
+    lines = card["body"].splitlines()
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            if in_checklist and not inserted:
+                # Insert before leaving the section
+                new_lines.append(f"- [ ] {op['item']}")
+                inserted = True
+            in_checklist = stripped == "## Checklist"
+        new_lines.append(line)
+    if in_checklist and not inserted:
+        new_lines.append(f"- [ ] {op['item']}")
+        inserted = True
+    if not inserted:
+        raise ValueError("no checklist section found")
+    card["updated"] = _today_iso()
+    server.write_card(board, list_slug, card_slug, card, "\n".join(new_lines))
+    return {"target": f"{board}/{list_slug}/{card_slug}"}
+
+
+def _do_move_card(op: dict, note_id: str) -> dict:
+    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    target = op["target_list"]
+    if target not in server.LISTS:
+        raise ValueError(f"invalid target_list '{target}'")
+    card = server.read_card(board, list_slug, card_slug)
+    if card is None:
+        raise ValueError("target card missing")
+    today = _today_iso()
+    src = server.DATA_DIR / "boards" / board / list_slug / f"{card_slug}.md"
+    dst_dir = server.DATA_DIR / "boards" / board / target
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / f"{card_slug}.md"
+    card["updated"] = today
+    server.write_card(board, target, card_slug, card, card["body"])
+    src.unlink(missing_ok=True)
+    _remove_from_order(board, list_slug, card_slug)
+    _append_to_order(board, target, card_slug)
+    return {"target": f"{board}/{target}/{card_slug}"}
+
+
+def _do_update_field(op: dict, note_id: str) -> dict:
+    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    field = op["field"]
+    if field not in ("due", "assignee", "labels"):
+        raise ValueError(f"field '{field}' not updatable")
+    card = server.read_card(board, list_slug, card_slug)
+    if card is None:
+        raise ValueError("target card missing")
+    card[field] = op["value"]
+    card["updated"] = _today_iso()
+    server.write_card(board, list_slug, card_slug, card, card["body"])
+    return {"target": f"{board}/{list_slug}/{card_slug}"}
+
+
+_HANDLERS = {
+    "create_card": _do_create_card,
+    "add_comment": _do_add_comment,
+    "tick_checklist": _do_tick_checklist,
+    "add_checklist_item": _do_add_checklist_item,
+    "move_card": _do_move_card,
+    "update_field": _do_update_field,
+}
+
+
+def _record_in_note(note_id: str, op: dict, target: str) -> None:
+    """Append a one-line entry to the note's frontmatter applied_ops list."""
+    path = NOTES_DIR / f"{note_id}.md"
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    stamp = datetime.now().isoformat(timespec="seconds")
+    entry = f"  - {{op: {op['op']}, target: {target}, at: '{stamp}'}}\n"
+    if "applied_ops: []" in text:
+        text = text.replace("applied_ops: []", "applied_ops:\n" + entry.rstrip("\n"))
+    else:
+        text = text.replace("applied_ops:\n", "applied_ops:\n" + entry, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def apply_operations(operations: list[dict], note_id: str) -> dict:
+    """Run each operation. Skip ones whose target is gone. Always continue."""
+    applied = []
+    skipped = []
+    for op in operations:
+        handler = _HANDLERS.get(op.get("op"))
+        if handler is None:
+            skipped.append({"op": op, "reason": f"unknown op '{op.get('op')}'"})
+            continue
+        try:
+            outcome = handler(op, note_id)
+            applied.append({"op": op["op"], "target": outcome["target"]})
+            _record_in_note(note_id, op, outcome["target"])
+        except (ValueError, KeyError, FileNotFoundError) as e:
+            skipped.append({"op": op, "reason": str(e)})
+    return {"applied": applied, "skipped": skipped}
+
+
 def analyze(body: str, title: str, *, model: str, client) -> dict:
     """Archive the note, snapshot the boards, call the LLM, return parsed result.
 

@@ -223,5 +223,108 @@ class TestAnalyze(unittest.TestCase):
         self.assertEqual(sys_block.get("cache_control"), {"type": "ephemeral"})
 
 
+class TestApply(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        notes.NOTES_DIR = Path(self.tmp.name) / "notes"
+        make_board(self.data_dir, "alpha")
+        self.note_id = notes.archive_note("body", "Test")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_apply_create_card(self):
+        ops = [{"op": "create_card", "board": "alpha", "list": "backlog",
+                "title": "New thing", "description": "Do it", "checklist": ["step 1"],
+                "due": "2026-05-10", "assignee": "Me", "labels": ["a"]}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(len(result["applied"]), 1)
+        self.assertEqual(result["skipped"], [])
+        card = server.read_card("alpha", "backlog", "new-thing")
+        self.assertIsNotNone(card)
+        self.assertEqual(card["title"], "New thing")
+        # source attachment present
+        self.assertTrue(any(a["url"].endswith(self.note_id) for a in card.get("attachments", [])))
+        # in _order.json
+        order = json.loads((self.data_dir / "boards/alpha/backlog/_order.json").read_text())
+        self.assertIn("new-thing", order)
+
+    def test_apply_add_comment(self):
+        make_card(self.data_dir, "alpha", "in-progress", "do-stuff",
+            "---\ntitle: Do stuff\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n")
+        ops = [{"op": "add_comment", "board": "alpha", "list": "in-progress",
+                "card": "do-stuff", "text": "Vendor confirmed pricing."}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(len(result["applied"]), 1)
+        card = server.read_card("alpha", "in-progress", "do-stuff")
+        self.assertIn("Vendor confirmed pricing.", card["body"])
+        self.assertIn(self.note_id, card["body"])  # source link in comment
+
+    def test_apply_tick_checklist(self):
+        make_card(self.data_dir, "alpha", "backlog", "task",
+            "---\ntitle: T\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\n\n\n"
+            "## Checklist\n\n- [ ] Confirm hotel\n- [ ] Book flight\n\n\n"
+            "## Comments\n\n")
+        ops = [{"op": "tick_checklist", "board": "alpha", "list": "backlog",
+                "card": "task", "item": "hotel"}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(len(result["applied"]), 1)
+        card = server.read_card("alpha", "backlog", "task")
+        self.assertIn("- [x] Confirm hotel", card["body"])
+        self.assertIn("- [ ] Book flight", card["body"])
+
+    def test_apply_skip_missing_target(self):
+        ops = [{"op": "add_comment", "board": "alpha", "list": "backlog",
+                "card": "does-not-exist", "text": "x"}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(result["applied"], [])
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertIn("missing", result["skipped"][0]["reason"])
+
+    def test_apply_skip_tick_item_not_found(self):
+        make_card(self.data_dir, "alpha", "backlog", "task2",
+            "---\ntitle: T\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\n\n\n## Checklist\n\n- [ ] Item A\n\n\n## Comments\n\n")
+        ops = [{"op": "tick_checklist", "board": "alpha", "list": "backlog",
+                "card": "task2", "item": "nonexistent"}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(result["applied"], [])
+        self.assertEqual(len(result["skipped"]), 1)
+
+    def test_apply_move_card(self):
+        make_card(self.data_dir, "alpha", "backlog", "movable",
+            "---\ntitle: M\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n")
+        ops = [{"op": "move_card", "board": "alpha", "list": "backlog",
+                "card": "movable", "target_list": "in-progress"}]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(len(result["applied"]), 1)
+        self.assertIsNone(server.read_card("alpha", "backlog", "movable"))
+        self.assertIsNotNone(server.read_card("alpha", "in-progress", "movable"))
+
+    def test_apply_records_in_note_frontmatter(self):
+        ops = [{"op": "create_card", "board": "alpha", "list": "backlog", "title": "X"}]
+        notes.apply_operations(ops, self.note_id)
+        archived = (notes.NOTES_DIR / f"{self.note_id}.md").read_text()
+        self.assertIn("create_card", archived)
+        self.assertIn("alpha/backlog/x", archived)
+
+    def test_apply_continues_on_partial_failure(self):
+        ops = [
+            {"op": "create_card", "board": "alpha", "list": "backlog", "title": "Good"},
+            {"op": "add_comment", "board": "alpha", "list": "backlog", "card": "ghost", "text": "x"},
+            {"op": "create_card", "board": "alpha", "list": "ideas", "title": "Also good"},
+        ]
+        result = notes.apply_operations(ops, self.note_id)
+        self.assertEqual(len(result["applied"]), 2)
+        self.assertEqual(len(result["skipped"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
