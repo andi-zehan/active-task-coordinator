@@ -11,6 +11,9 @@ from datetime import datetime, date, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+import llm_config
+import notes
+import janitor
 
 DATA_DIR = Path(__file__).parent / "data"
 LISTS = ["ideas", "backlog", "in-progress", "done"]
@@ -367,6 +370,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         # /api/sync/status
         if path == '/api/sync/status' and method == 'GET':
             return self._handle_sync_status()
+
+        # /api/llm-config
+        if path == '/api/llm-config' and method == 'GET':
+            return self._handle_get_llm_config()
+        if path == '/api/llm-config' and method == 'PUT':
+            return self._handle_put_llm_config()
+        if path == '/api/llm-config/test' and method == 'POST':
+            return self._handle_test_llm_config()
 
         # Static files (GET only)
         if method == 'GET':
@@ -725,6 +736,38 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({'dirty': bool(r.stdout.strip())})
         except Exception:
             self._send_json({'dirty': False})
+
+    def _handle_get_llm_config(self):
+        self._send_json(llm_config.public_view())
+
+    def _handle_put_llm_config(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        if not isinstance(body, dict):
+            return self._send_error(400, 'expected object')
+        # Validate model if present
+        if 'model' in body and body['model'] not in llm_config.ALLOWED_MODELS:
+            return self._send_error(400, f"model must be one of {llm_config.ALLOWED_MODELS}")
+        llm_config.save(body)
+        self._send_json({'ok': True})
+
+    def _handle_test_llm_config(self):
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'not configured')
+        cfg = llm_config.load()
+        try:
+            client.messages.create(
+                model=cfg['model'],
+                max_tokens=1,
+                messages=[{'role': 'user', 'content': 'hi'}],
+            )
+            self._send_json({'ok': True})
+        except Exception as e:
+            self._send_json({'ok': False, 'error': str(e)})
 
 
 def _is_empty_placeholder_data_dir():

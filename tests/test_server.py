@@ -466,5 +466,45 @@ class TestAggregationAPI(unittest.TestCase):
         self.assertEqual(data, [])
 
 
+class TestLLMConfigEndpoints(unittest.TestCase):
+    def setUp(self):
+        import llm_config
+        self.tmp = tempfile.TemporaryDirectory()
+        llm_config.CONFIG_PATH = Path(self.tmp.name) / ".llm-config.json"
+        self.server = HTTPServer(('127.0.0.1', 0), server.RequestHandler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join()
+        self.tmp.cleanup()
+
+    def test_get_unconfigured(self):
+        status, body = make_request_port(self.port, "GET", "/api/llm-config")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["configured"])
+        self.assertEqual(body["auth_token"], "")
+
+    def test_put_then_get_masks_token(self):
+        status, _ = make_request_port(self.port, "PUT", "/api/llm-config", {
+            "auth_token": "supersecret1234",
+            "model": "claude-sonnet-4-6",
+        })
+        self.assertEqual(status, 200)
+        status, body = make_request_port(self.port, "GET", "/api/llm-config")
+        self.assertTrue(body["configured"])
+        self.assertEqual(body["auth_token"], "****1234")
+        self.assertEqual(body["model"], "claude-sonnet-4-6")
+
+    def test_put_partial_keeps_token(self):
+        make_request_port(self.port, "PUT", "/api/llm-config", {"auth_token": "tok-abcd"})
+        make_request_port(self.port, "PUT", "/api/llm-config", {"model": "claude-haiku-4-5"})
+        status, body = make_request_port(self.port, "GET", "/api/llm-config")
+        self.assertEqual(body["auth_token"], "****abcd")
+        self.assertEqual(body["model"], "claude-haiku-4-5")
+
+
 if __name__ == '__main__':
     unittest.main()
