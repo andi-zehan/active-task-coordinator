@@ -8,14 +8,15 @@ status: design
 
 ## Goal
 
-Let the user paste a meeting note (Copilot summary, raw transcript, free-form notes) into the ATC kanban UI and have an LLM-powered agent propose card operations across all boards. The user reviews and approves a list of operations before anything is written. The original note is archived inside the data repository and linked back from every card and comment the agent creates.
+Let the user paste or type a meeting note (Copilot summary, raw transcript, free-form notes) into the ATC kanban UI and have an LLM-powered agent propose card operations across all boards. The user reviews and approves a list of operations before anything is written. The original note is archived locally and linked back from every card and comment the agent creates.
 
 ## Non-goals
 
 - No automatic file-watcher or background daemon.
-- No processing of files on disk; input is pasted text only.
+- No processing of files on disk; input is text typed or pasted into the UI only.
 - No modification of the existing `meeting-notes` / `process-inbox` / `kanban` skills used in Claude Code sessions. Those continue to work independently.
 - No automatic git sync after apply. The existing dirty indicator and manual sync button remain the user's control.
+- Notes are NOT synced to the data repo — they stay on the local machine only.
 
 ## User flow
 
@@ -84,10 +85,10 @@ The Anthropic SDK is initialized **fresh on each LLM call** by re-reading this f
 
 When the config is missing or `auth_token` is empty, the **Process Notes** button is disabled with a tooltip "Configure API token in Settings".
 
-### Note archive (`data/notes/`)
+### Note archive (`notes/`)
 
-- Lives **inside the data repository** so notes are versioned and synced alongside the boards.
-- Filename: `data/notes/YYYY-MM-DD-<slug>.md`. Slug derived from the optional title (default: `untitled-HHMMSS`). Collisions get a `-2`, `-3` suffix.
+- Lives at the **ATC project root** (`./notes/`), NOT under `data/`. Added to the ATC `.gitignore` and never pushed to the data repo. Local-only by design — meeting notes can contain sensitive content.
+- Filename: `notes/YYYY-MM-DD-<slug>.md`. Slug derived from the optional title (default: `untitled-HHMMSS`). Collisions get a `-2`, `-3` suffix.
 - File format:
 
 ```markdown
@@ -104,6 +105,7 @@ applied_ops:
 
 - `applied_ops` is appended to on every successful Apply call (a single note can be re-applied if the user reopens the result and runs more ops later — out of scope for v1 but the format supports it).
 - Served by `GET /api/notes/:id` as `text/markdown`. The id is the filename without `.md`.
+- Because notes live outside `data/`, writing them does NOT trigger the git dirty indicator.
 
 ### Operation schema
 
@@ -191,8 +193,29 @@ Other operations in the batch still execute. The result lists each skip individu
 
 ### Sync behavior
 
-- Apply writes files under `data/notes/` and `data/boards/` → existing `git status --porcelain` flips dirty → existing UI indicator lights up.
-- The result modal shows: `Data is now out of sync.` with a `[Sync now]` button that POSTs to `/api/sync/push`. No automatic push.
+- Apply writes files under `data/boards/` → existing `git status --porcelain` flips dirty → existing UI indicator lights up.
+- Writes under `notes/` are local-only and do not affect sync state.
+- The result modal shows: `Data is now out of sync.` with a `[Sync now]` button that POSTs to `/api/sync/push` when `data/boards/` was touched. No automatic push.
+
+### Retention / cleanup
+
+A periodic janitor runs to keep things tidy. Two rules:
+
+1. **Done cards**: any card in the `done` list whose `updated` date is more than 14 days in the past is deleted (file removed, slug pulled from that list's `_order.json`).
+2. **Orphan notes**: a note in `notes/` is deleted when no card across any board still references it via `attachments[].url == /api/notes/<note_id>`. This naturally happens when all cards linked to a note have been deleted (typically after the 14-day done sweep).
+
+Implementation:
+
+- New module `janitor.py` with `sweep_done_cards()` and `sweep_orphan_notes()`.
+- Triggered by:
+  - Server startup (one pass).
+  - A new endpoint `POST /api/janitor/run` (manual trigger from the UI for debugging / on-demand).
+  - A simple in-process timer that re-runs every 24 hours while the server is up.
+- Each sweep logs to stdout: `janitor: deleted N done cards, M orphan notes`.
+- The sweep is **conservative**:
+  - A done card is deleted only if `updated` parses cleanly AND is more than 14 days old. Cards without a parseable `updated` are skipped with a warning.
+  - A note is deleted only if its filename (the `note_id`) appears in NO card attachment URL across the entire `data/boards/` tree.
+- Comments inside cards that link to a note (the `_(from [title](/api/notes/<id>))_` line) do **not** count as a reference for orphan detection — only `attachments[].url` does. This is intentional: if the only thing left pointing at a note is a comment on a soon-to-be-deleted done card, the note can be cleaned up too.
 
 ## UI changes (`index.html`)
 
@@ -236,13 +259,14 @@ Bottom: **← Back** / **Apply N selected**.
 
 **New:**
 - `notes.py` — snapshot, LLM call, apply, archive helpers.
-- `data/notes/` directory (created on first analyze).
+- `janitor.py` — done-card and orphan-note cleanup.
+- `notes/` directory at project root (created on first analyze; gitignored).
 - `./.llm-config.json` (created on first save; gitignored).
 
 **Modified:**
-- `server.py` — six new route handlers, import `notes`.
+- `server.py` — seven new route handlers (LLM config, notes analyze/apply/get, janitor run), import `notes` and `janitor`, kick off janitor on startup + 24h timer.
 - `index.html` — two header buttons, two modals, JS for the wizard.
-- `.gitignore` — add `.llm-config.json`.
+- `.gitignore` — add `.llm-config.json` and `notes/`.
 - `requirements.txt` (or equivalent install instructions) — add `anthropic`.
 
 ## Out of scope (v1)
@@ -260,3 +284,5 @@ Bottom: **← Back** / **Apply N selected**.
 - **TLS verify off**: required by the corp gateway. Limited to the LLM client only, not the kanban server.
 - **Snapshot size growth**: at hundreds of cards across many boards the snapshot may approach token limits. v1 acceptable; mitigation (per-board scope toggle, snapshot trimming) deferred.
 - **LLM proposes wrong target card**: mitigated by preview-then-apply with confidence scoring; the user is always in the loop.
+- **Janitor data loss**: a recently-completed done card the user wanted to keep is deleted after 14 days. Mitigation: `done` is for completed work; users who want to keep something move it back to another list. The 14-day window is generous and the data repo's git history preserves deleted cards.
+- **Note retention surprise**: a user who manually edits a card to remove an attachment may find the note silently disappears at the next sweep. Acceptable: that's the contract.
