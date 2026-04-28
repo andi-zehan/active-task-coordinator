@@ -1850,7 +1850,7 @@ function createCardElement(card) {
 
   const assignee = typeof card.assignee === 'string' ? card.assignee : '';
   const due = typeof card.due === 'string' ? card.due : '';
-  const dueClass = due && isOverdue(due) ? 'overdue' : '';
+  const dueClass = due && isOverdue(due) && card.list !== 'done' ? 'overdue' : '';
   const metaParts = [];
   metaParts.push(`<span class="card-assignee">${assignee ? escHtml(assignee) : '&mdash;'}</span>`);
   metaParts.push(`<span class="card-due ${dueClass}">${due ? formatDate(due) : '&mdash;'}</span>`);
@@ -2005,7 +2005,7 @@ async function renderDashboard() {
         for (const c of boardCards) {
           const labels = Array.isArray(c.labels) ? c.labels : [];
           const labelDots = labels.map(l => `<div class="dash-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('');
-          const dueClass = c.due && isOverdue(c.due) ? 'overdue' : '';
+          const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
           html += `<div class="dash-card" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
             <div class="dash-labels">${labelDots}</div>
             <span class="dash-title">${escHtml(c.title)}</span>
@@ -2094,7 +2094,7 @@ async function renderCalendar() {
       <div class="cal-day-num">${d}</div>`;
     const dayCards = cardsByDay[d] || [];
     for (const c of dayCards) {
-      const overdueClass = isOverdue(c.due) ? ' overdue' : '';
+      const overdueClass = isOverdue(c.due) && c.list !== 'done' ? ' overdue' : '';
       html += `<div class="cal-card${overdueClass}" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">${escHtml(c.title)}</div>`;
     }
     html += '</div>';
@@ -2190,7 +2190,7 @@ async function renderTable() {
   for (const c of allCards) {
     const labels = Array.isArray(c.labels) ? c.labels : [];
     const labelsHtml = labels.map(l => `<span class="table-label ${labelColorClass(l)}">${escHtml(l)}</span>`).join('');
-    const dueClass = c.due && isOverdue(c.due) ? 'overdue' : '';
+    const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
     html += `<tr data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
       <td>${escHtml(c.title)}</td>
       <td>${escHtml(c._boardName || c.board)}</td>
