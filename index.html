@@ -155,6 +155,22 @@ a { color: #0052cc; text-decoration: none; }
 .btn-sync.sync-err { background: #ffebe6; color: #bf2600; border-color: #ffbdad; }
 .btn-sync.sync-dirty { background: #e74c3c; color: #fff; border-color: #c0392b; }
 .btn-sync.sync-dirty:hover { background: #c0392b; }
+.header-btn {
+  padding: 5px 12px;
+  background: #f4f5f7;
+  color: #5e6c84;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  margin-left: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.header-btn:hover { background: #ebecf0; color: #172b4d; }
+.header-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.header-btn[disabled]:hover { background: #f4f5f7; color: #5e6c84; }
 
 /* ── Filter Bar ───────────────────────────────────────────────── */
 .filter-bar {
@@ -1089,6 +1105,8 @@ a { color: #0052cc; text-decoration: none; }
     <div class="search-dropdown" id="search-dropdown"></div>
   </div>
   <button class="btn-new-card" id="btn-new-card">+ New Card</button>
+  <button class="header-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
+  <button class="header-btn" id="btn-settings" title="LLM settings">&#9881;</button>
   <button class="btn-sync" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
 </div>
 
@@ -1154,6 +1172,46 @@ a { color: #0052cc; text-decoration: none; }
         </select>
       </div>
       <button id="nc-submit" style="width:100%;padding:8px;background:#0052cc;color:#fff;border:none;border-radius:4px;font-size:14px;font-weight:600;cursor:pointer;">Create Card</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="settings-overlay">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" id="settings-close">&times;</button>
+    <div class="modal-body">
+      <h2>LLM Settings</h2>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">API token</label>
+        <input id="cfg-token" type="password" placeholder="paste token" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Base URL</label>
+        <input id="cfg-base-url" type="text" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Model</label>
+        <select id="cfg-model" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;">
+          <option value="claude-opus-4-7">Opus 4.7</option>
+          <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+          <option value="claude-haiku-4-5">Haiku 4.5</option>
+        </select>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#172b4d;">
+          <input id="cfg-tls-verify" type="checkbox" />
+          Verify TLS (uncheck for corp gateway)
+        </label>
+      </div>
+      <div class="modal-actions" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button id="btn-test-conn" class="header-btn">Test connection</button>
+        <span id="cfg-status" style="font-size:13px;"></span>
+      </div>
+      <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
+        <button id="btn-cfg-cancel" class="header-btn">Cancel</button>
+        <button id="btn-cfg-save" class="btn-new-card">Save</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2702,6 +2760,78 @@ async function checkSyncStatus() {
 checkSyncStatus();
 setInterval(checkSyncStatus, 10000);
 
+/* ================================================================
+   LLM Settings modal
+   ================================================================ */
+const cfgEls = {
+  overlay: document.getElementById('settings-overlay'),
+  token: document.getElementById('cfg-token'),
+  baseUrl: document.getElementById('cfg-base-url'),
+  model: document.getElementById('cfg-model'),
+  tls: document.getElementById('cfg-tls-verify'),
+  status: document.getElementById('cfg-status'),
+};
+
+async function openSettings() {
+  const cfg = await api.get('/api/llm-config');
+  cfgEls.token.value = '';
+  cfgEls.token.placeholder = cfg.auth_token || 'paste token';
+  cfgEls.baseUrl.value = cfg.base_url || '';
+  cfgEls.model.value = cfg.model || 'claude-opus-4-7';
+  cfgEls.tls.checked = !!cfg.tls_verify;
+  cfgEls.status.textContent = '';
+  cfgEls.overlay.classList.add('visible');
+}
+
+function closeSettings() {
+  cfgEls.overlay.classList.remove('visible');
+}
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('settings-close').addEventListener('click', closeSettings);
+document.getElementById('btn-cfg-cancel').addEventListener('click', closeSettings);
+cfgEls.overlay.addEventListener('click', (e) => {
+  if (e.target === cfgEls.overlay) closeSettings();
+});
+
+document.getElementById('btn-cfg-save').addEventListener('click', async () => {
+  const body = {
+    base_url: cfgEls.baseUrl.value,
+    model: cfgEls.model.value,
+    tls_verify: cfgEls.tls.checked,
+  };
+  if (cfgEls.token.value) body.auth_token = cfgEls.token.value;
+  try {
+    await api.put('/api/llm-config', body);
+    closeSettings();
+    refreshNotesButtonState();
+  } catch (err) {
+    cfgEls.status.textContent = 'Save failed: ' + err.message;
+  }
+});
+
+document.getElementById('btn-test-conn').addEventListener('click', async () => {
+  cfgEls.status.textContent = 'Testing...';
+  try {
+    const body = await api.post('/api/llm-config/test');
+    cfgEls.status.textContent = body.ok ? '✓ OK' : '✗ ' + (body.error || 'failed');
+  } catch (err) {
+    cfgEls.status.textContent = '✗ ' + err.message;
+  }
+});
+
+async function refreshNotesButtonState() {
+  const btn = document.getElementById('btn-process-notes');
+  if (!btn) return;
+  try {
+    const cfg = await api.get('/api/llm-config');
+    btn.disabled = !cfg.configured;
+    btn.title = cfg.configured ? 'Process meeting notes' : 'Configure API token in Settings';
+  } catch {
+    btn.disabled = true;
+  }
+}
+
 // Modal close
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-overlay').addEventListener('click', (e) => {
@@ -2721,6 +2851,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (document.getElementById('modal-overlay').classList.contains('visible')) {
       closeModal();
+    } else if (document.getElementById('settings-overlay').classList.contains('visible')) {
+      closeSettings();
+    } else if (document.getElementById('notes-overlay') && document.getElementById('notes-overlay').classList.contains('visible')) {
+      document.getElementById('notes-overlay').classList.remove('visible');
     } else if (searchDropdown.classList.contains('visible')) {
       searchDropdown.classList.remove('visible');
       searchInput.value = '';
@@ -2754,6 +2888,7 @@ document.addEventListener('keydown', (e) => {
   await loadBoards();
   await populateFilterOptions();
   await refreshCurrentView();
+  refreshNotesButtonState();
 })();
 </script>
 </body>
