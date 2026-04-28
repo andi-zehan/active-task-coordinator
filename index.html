@@ -171,6 +171,18 @@ a { color: #0052cc; text-decoration: none; }
 .header-btn:hover { background: #ebecf0; color: #172b4d; }
 .header-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .header-btn[disabled]:hover { background: #f4f5f7; color: #5e6c84; }
+.modal.modal-wide { max-width: 800px; width: 800px; }
+.op-row { border-top: 1px solid #e0e0e0; padding: 6px 0; }
+.op-row:first-child { border-top: none; }
+.op-row label { display: block; cursor: pointer; font-size: 13px; }
+.op-row input[type=checkbox] { margin-right: 6px; vertical-align: middle; }
+.conf { font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; text-transform: uppercase; font-weight: 600; }
+.conf-high { background: #d4edda; color: #155724; }
+.conf-med { background: #fff3cd; color: #856404; }
+.conf-low { background: #f8d7da; color: #721c24; }
+.target { color: #5e6c84; margin-left: 8px; font-size: 12px; }
+.summary { margin-left: 8px; }
+.reason { color: #777; font-size: 12px; margin-left: 24px; margin-top: 2px; }
 
 /* ── Filter Bar ───────────────────────────────────────────────── */
 .filter-bar {
@@ -1211,6 +1223,51 @@ a { color: #0052cc; text-decoration: none; }
       <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
         <button id="btn-cfg-cancel" class="header-btn">Cancel</button>
         <button id="btn-cfg-save" class="btn-new-card">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Process Notes Modal ────────────────────────────────────── -->
+<div class="modal-overlay" id="notes-overlay">
+  <div class="modal modal-wide">
+    <button class="modal-close" id="notes-close">&times;</button>
+    <div class="modal-body">
+      <!-- Step 1 -->
+      <div id="notes-step-1">
+        <h2>Process Notes — Paste</h2>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Title (optional)</label>
+          <input id="notes-title" type="text" placeholder="e.g. Q2 Planning" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Note text</label>
+          <textarea id="notes-text" rows="20" style="width:100%;font-family:monospace;font-size:13px;padding:8px;border:1px solid #dfe1e6;border-radius:4px;box-sizing:border-box;"></textarea>
+        </div>
+        <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+          <span id="notes-spinner" hidden style="font-size:13px;color:#5e6c84;">Analyzing…</span>
+          <button id="btn-notes-cancel" class="header-btn">Cancel</button>
+          <button id="btn-notes-analyze" class="btn-new-card">Analyze</button>
+        </div>
+      </div>
+      <!-- Step 2 -->
+      <div id="notes-step-2" hidden>
+        <h2>Preview</h2>
+        <p id="notes-summary" style="font-size:13px;color:#5e6c84;"></p>
+        <div id="notes-ops"></div>
+        <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;">
+          <button id="btn-notes-back" class="header-btn">← Back</button>
+          <button id="btn-notes-apply" class="btn-new-card">Apply selected</button>
+        </div>
+      </div>
+      <!-- Step 3 -->
+      <div id="notes-step-3" hidden>
+        <h2>Result</h2>
+        <div id="notes-result" style="font-size:13px;"></div>
+        <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+          <button id="btn-notes-sync" class="header-btn" hidden>Sync now</button>
+          <button id="btn-notes-close" class="btn-new-card">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2831,6 +2888,136 @@ async function refreshNotesButtonState() {
     btn.disabled = true;
   }
 }
+
+/* ================================================================
+   Process Notes wizard
+   ================================================================ */
+let currentNoteId = null;
+let currentOps = [];
+
+function showNotesStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`notes-step-${i}`).hidden = (i !== n);
+  }
+}
+
+function closeNotesModal() {
+  document.getElementById('notes-overlay').classList.remove('visible');
+}
+
+document.getElementById('btn-process-notes').addEventListener('click', () => {
+  document.getElementById('notes-text').value = '';
+  document.getElementById('notes-title').value = '';
+  document.getElementById('notes-spinner').hidden = true;
+  showNotesStep(1);
+  document.getElementById('notes-overlay').classList.add('visible');
+});
+
+document.getElementById('notes-close').addEventListener('click', closeNotesModal);
+document.getElementById('btn-notes-cancel').addEventListener('click', closeNotesModal);
+document.getElementById('btn-notes-close').addEventListener('click', closeNotesModal);
+document.getElementById('notes-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('notes-overlay')) closeNotesModal();
+});
+
+document.getElementById('btn-notes-analyze').addEventListener('click', async () => {
+  const text = document.getElementById('notes-text').value.trim();
+  if (!text) return;
+  const title = document.getElementById('notes-title').value;
+  document.getElementById('notes-spinner').hidden = false;
+  try {
+    const result = await api.post('/api/notes/analyze', { text, title });
+    currentNoteId = result.note_id;
+    currentOps = result.operations || [];
+    document.getElementById('notes-summary').textContent =
+      `Note: ${currentNoteId} — ${result.summary || ''}`;
+    renderOps(currentOps);
+    showNotesStep(2);
+  } catch (err) {
+    alert('Analyze failed: ' + err.message);
+  } finally {
+    document.getElementById('notes-spinner').hidden = true;
+  }
+});
+
+function renderOps(ops) {
+  const container = document.getElementById('notes-ops');
+  container.innerHTML = '';
+  if (!ops.length) {
+    container.innerHTML = '<p style="color:#5e6c84;font-size:13px;">No operations proposed.</p>';
+    return;
+  }
+  ops.forEach((op, i) => {
+    const div = document.createElement('div');
+    div.className = 'op-row';
+    const checked = op.confidence !== 'low' ? 'checked' : '';
+    const target = op.card
+      ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
+      : `${op.board || ''} / ${op.list || ''}`;
+    const summary = op.op === 'create_card' ? `"${escHtml(op.title || '')}"`
+      : op.op === 'add_comment' ? `"${escHtml((op.text || '').slice(0, 80))}"`
+      : op.op === 'tick_checklist' ? `tick "${escHtml(op.item || '')}"`
+      : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
+      : op.op === 'move_card' ? `→ ${escHtml(op.target_list || '')}`
+      : op.op === 'update_field' ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
+      : '';
+    div.innerHTML = `
+      <label>
+        <input type="checkbox" data-i="${i}" ${checked} />
+        <strong>${escHtml(op.op || '')}</strong>
+        <span class="conf conf-${op.confidence || 'med'}">${escHtml(op.confidence || '')}</span>
+        <span class="target">${escHtml(target)}</span>
+        <span class="summary">${summary}</span>
+        <div class="reason">${escHtml(op.reason || '')}</div>
+      </label>`;
+    container.appendChild(div);
+  });
+}
+
+document.getElementById('btn-notes-back').addEventListener('click', () => showNotesStep(1));
+
+document.getElementById('btn-notes-apply').addEventListener('click', async () => {
+  const checks = document.querySelectorAll('#notes-ops input[type=checkbox]');
+  const selected = [];
+  checks.forEach(c => { if (c.checked) selected.push(currentOps[parseInt(c.dataset.i)]); });
+  let result;
+  try {
+    result = await api.post('/api/notes/apply', {
+      note_id: currentNoteId,
+      operations: selected,
+    });
+  } catch (err) {
+    alert('Apply failed: ' + err.message);
+    return;
+  }
+  const out = document.getElementById('notes-result');
+  const skipped = result.skipped || [];
+  const applied = result.applied || [];
+  out.innerHTML = `
+    <p>✓ Applied ${applied.length} operation(s).</p>
+    ${skipped.length ? `<p>✗ Skipped ${skipped.length}:</p>
+      <ul>${skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('')}</ul>` : ''}
+    <p>Note kept at <a href="/api/notes/${encodeURIComponent(currentNoteId)}" target="_blank">/api/notes/${escHtml(currentNoteId)}</a></p>
+  `;
+  document.getElementById('btn-notes-sync').hidden = applied.length === 0;
+  document.getElementById('btn-notes-sync').disabled = false;
+  document.getElementById('btn-notes-sync').textContent = 'Sync now';
+  showNotesStep(3);
+  if (typeof refreshCurrentView === 'function') refreshCurrentView();
+});
+
+document.getElementById('btn-notes-sync').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-notes-sync');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+  try {
+    await api.post('/api/sync/push');
+    btn.textContent = 'Synced ✓';
+  } catch (err) {
+    btn.textContent = '✗ ' + err.message;
+    btn.disabled = false;
+  }
+});
 
 // Modal close
 document.getElementById('modal-close').addEventListener('click', closeModal);
