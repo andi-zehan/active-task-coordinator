@@ -386,6 +386,24 @@ a { color: #0052cc; text-decoration: none; }
 }
 .swimlane-drag-handle:hover { color: #5e6c84; }
 .swimlane-drag-handle:active { cursor: grabbing; }
+.swimlane-move-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-right: 2px;
+}
+.swimlane-move-btn {
+  background: none;
+  border: none;
+  color: #b3b9c4;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 1;
+  user-select: none;
+}
+.swimlane-move-btn:hover:not(:disabled) { color: #0052cc; }
+.swimlane-move-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .swimlane.dragging-lane { opacity: 0.5; }
 .swimlane.drop-target-above { border-top: 2px solid #0052cc; }
 .swimlane.drop-target-below { border-bottom: 2px solid #0052cc; }
@@ -1597,6 +1615,24 @@ async function refreshCurrentView() {
 /* ================================================================
    Board View
    ================================================================ */
+async function moveBoard(slug, delta) {
+  const idx = state.boards.findIndex(b => b.slug === slug);
+  if (idx < 0) return;
+  const target = idx + delta;
+  if (target < 0 || target >= state.boards.length) return;
+  const reordered = [...state.boards];
+  const [moved] = reordered.splice(idx, 1);
+  reordered.splice(target, 0, moved);
+  state.boards = reordered;
+  const newOrder = reordered.map(b => b.slug);
+  try {
+    await api.put('/api/boards-order', newOrder);
+  } catch (err) {
+    console.error('Failed to save board order:', err);
+  }
+  await renderBoard();
+}
+
 async function renderBoard() {
   const container = document.getElementById('board-columns');
   if (state.boards.length === 0) {
@@ -1605,7 +1641,8 @@ async function renderBoard() {
   }
   container.innerHTML = '';
 
-  for (const boardInfo of state.boards) {
+  for (let boardIdx = 0; boardIdx < state.boards.length; boardIdx++) {
+    const boardInfo = state.boards[boardIdx];
     let boardData;
     try {
       boardData = await api.get('/api/boards/' + boardInfo.slug);
@@ -1616,12 +1653,18 @@ async function renderBoard() {
     const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
     const boardColor = boardData.color || '#4A90D9';
     const totalCards = listOrder.reduce((sum, l) => sum + (lists[l] || []).length, 0);
+    const isFirst = boardIdx === 0;
+    const isLast = boardIdx === state.boards.length - 1;
 
     const lane = document.createElement('div');
     lane.className = 'swimlane';
     lane.dataset.board = boardInfo.slug;
     lane.innerHTML = `
       <div class="swimlane-header">
+        <div class="swimlane-move-btns">
+          <button class="swimlane-move-btn move-up" title="Move up"${isFirst ? ' disabled' : ''}>&#x25B2;</button>
+          <button class="swimlane-move-btn move-down" title="Move down"${isLast ? ' disabled' : ''}>&#x25BC;</button>
+        </div>
         <div class="swimlane-drag-handle" title="Drag to reorder">&#x2630;</div>
         <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
         <span class="swimlane-toggle">&#x25BE;</span>
@@ -1641,6 +1684,18 @@ async function renderBoard() {
     if (collapsedSet.includes(boardInfo.slug)) lane.classList.add('collapsed');
 
     const header = lane.querySelector('.swimlane-header');
+
+    const moveUpBtn = header.querySelector('.move-up');
+    const moveDownBtn = header.querySelector('.move-down');
+    moveUpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveBoard(boardInfo.slug, -1);
+    });
+    moveDownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveBoard(boardInfo.slug, 1);
+    });
+
     const toggle = header.querySelector('.swimlane-toggle');
     toggle.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1813,6 +1868,8 @@ function setupSwimlaneDrag(container) {
 
       // Persist new order
       const newOrder = [...container.querySelectorAll('.swimlane')].map(l => l.dataset.board);
+      const bySlug = Object.fromEntries(state.boards.map(b => [b.slug, b]));
+      state.boards = newOrder.map(s => bySlug[s]).filter(Boolean);
       try {
         await api.put('/api/boards-order', newOrder);
       } catch (err) {
