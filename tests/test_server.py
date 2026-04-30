@@ -568,32 +568,20 @@ class TestNotesEndpoints(unittest.TestCase):
         notes_mod.NOTES_DIR = Path(self.tmp.name) / "notes"
         # Stub the LLM client to drive the tool-use loop:
         # turn 1 -> create_card, turn 2 -> finish.
-        def _block(type_, **kw):
-            return type("B", (), {"type": type_, **kw})()
-        def _resp(blocks):
-            stop = "tool_use" if any(b.type == "tool_use" for b in blocks) else "end_turn"
-            return type("R", (), {"content": blocks, "stop_reason": stop})()
+        from tests._llm_fakes import FakeClient, FakeResponse, tool_use
         scripted = [
-            _resp([_block("tool_use", id="t1", name="create_card", input={
+            FakeResponse([tool_use("create_card", {
                 "board": "alpha", "list": "backlog", "title": "Do thing",
                 "confidence": "high", "reason": "explicit",
-            })]),
-            _resp([_block("tool_use", id="t2", name="finish", input={
+            }, id_="t1")]),
+            FakeResponse([tool_use("finish", {
                 "summary": "Talked about X.",
-            })]),
+            }, id_="t2")]),
         ]
-        class FakeMessages:
-            def __init__(self):
-                self._queue = list(scripted)
-            def create(self, **kwargs):
-                return self._queue.pop(0)
-        class FakeClient:
-            def __init__(self):
-                self.messages = FakeMessages()
         # Each request gets a fresh client so the scripted queue restarts.
         import llm_config
         self._orig_get_client = llm_config.get_client
-        llm_config.get_client = lambda: FakeClient()
+        llm_config.get_client = lambda: FakeClient(list(scripted))
 
         # Set up an alpha board
         board_dir = self.data_dir / "boards" / "alpha"
