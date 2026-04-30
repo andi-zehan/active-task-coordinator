@@ -3617,7 +3617,9 @@ async function sendChatMessage() {
           break;
         case 'queued':
           if (!chatState.pendingByTurn[turnIndex]) chatState.pendingByTurn[turnIndex] = [];
-          chatState.pendingByTurn[turnIndex].push(ev);
+          // Store as a full op (op name + all args), matching the shape
+          // /api/notes/apply expects.
+          chatState.pendingByTurn[turnIndex].push({ op: ev.op, ...(ev.args || {}) });
           renderOpsPanelForTurn(bubble, turnIndex);
           break;
         case 'text':

@@ -11,7 +11,7 @@ import json
 from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
     _WRITE_OP_NAMES, _queue_op,
-    _summarize_read_result, _queued_summary_fields,
+    _summarize_read_result,
 )
 
 
@@ -117,8 +117,8 @@ def chat_stream(messages: list, *, model: str, client,
                            "summary": _summarize_read_result(name, args, payload)}
                 elif name in _WRITE_OP_NAMES:
                     payload = _queue_op(name, args, proposed_ops)
-                    yield {"type": "queued", "op": name,
-                           **_queued_summary_fields(name, args)}
+                    # Send full args so the UI has every field needed to apply.
+                    yield {"type": "queued", "op": name, "args": args}
                 else:
                     payload = {"error": f"unknown tool '{name}'"}
                     yield {"type": "result", "name": name,

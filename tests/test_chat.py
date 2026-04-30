@@ -65,7 +65,11 @@ class TestChatStream(unittest.TestCase):
         ))
         queued = [e for e in events if e["type"] == "queued"]
         self.assertEqual(len(queued), 1)
-        self.assertEqual(queued[0]["title"], "X")
+        # queued event carries the full args dict so the UI can apply it as-is.
+        self.assertEqual(queued[0]["op"], "create_card")
+        self.assertEqual(queued[0]["args"]["title"], "X")
+        self.assertEqual(queued[0]["args"]["board"], "alpha")
+        self.assertEqual(queued[0]["args"]["list"], "backlog")
         done = events[-1]
         self.assertEqual(done["type"], "done")
         self.assertEqual(len(done["proposed_operations"]), 1)
