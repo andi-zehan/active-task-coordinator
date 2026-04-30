@@ -66,3 +66,17 @@ def public_view() -> dict:
         "remote_url": cfg["remote_url"],
         "branch": cfg["branch"],
     }
+
+
+def validate(updates: dict) -> None:
+    """Raise ValidationError if `updates` is not a usable config."""
+    mode = updates.get("mode")
+    if mode not in ALLOWED_MODES:
+        raise ValidationError(f"mode must be one of {ALLOWED_MODES}")
+    branch = updates.get("branch", "")
+    if not isinstance(branch, str) or not branch.strip():
+        raise ValidationError("branch must be a non-empty string")
+    if mode == "remote":
+        url = updates.get("remote_url", "")
+        if not isinstance(url, str) or not url.strip():
+            raise ValidationError("remote_url is required when mode is 'remote'")

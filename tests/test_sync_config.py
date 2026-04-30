@@ -51,5 +51,32 @@ class TestLoadSave(unittest.TestCase):
         self.assertNotIn("skip_next_pull", view)
 
 
+class TestValidation(unittest.TestCase):
+    def test_valid_off(self):
+        sync_config.validate({"mode": "off", "remote_url": "", "branch": "main"})
+
+    def test_valid_local_no_url_required(self):
+        sync_config.validate({"mode": "local", "remote_url": "", "branch": "main"})
+
+    def test_valid_remote_with_url(self):
+        sync_config.validate({"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"})
+
+    def test_invalid_mode(self):
+        with self.assertRaises(sync_config.ValidationError):
+            sync_config.validate({"mode": "weird", "remote_url": "", "branch": "main"})
+
+    def test_remote_without_url(self):
+        with self.assertRaises(sync_config.ValidationError):
+            sync_config.validate({"mode": "remote", "remote_url": "", "branch": "main"})
+
+    def test_remote_with_whitespace_url(self):
+        with self.assertRaises(sync_config.ValidationError):
+            sync_config.validate({"mode": "remote", "remote_url": "   ", "branch": "main"})
+
+    def test_empty_branch_rejected(self):
+        with self.assertRaises(sync_config.ValidationError):
+            sync_config.validate({"mode": "local", "remote_url": "", "branch": ""})
+
+
 if __name__ == "__main__":
     unittest.main()
