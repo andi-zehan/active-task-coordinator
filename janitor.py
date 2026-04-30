@@ -1,5 +1,13 @@
-"""Periodic cleanup: delete done cards older than 14 days, delete orphan notes."""
+"""Periodic cleanup: archive done cards older than 14 days, delete orphan notes.
+
+Archived cards are moved to data/_archive/<board>/<YYYY-MM>/<slug>.md so they
+disappear from any board (and from the agent's view) but remain on disk for
+manual lookup. Notes referenced by an archived card are moved alongside the
+card into data/_archive/<board>/<YYYY-MM>/notes/ so the orphan-note sweep
+won't subsequently delete them.
+"""
 import json
+import shutil
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -7,6 +15,11 @@ import server
 
 DONE_RETENTION_DAYS = 14
 NOTES_DIR = Path(__file__).parent / "notes"
+NOTE_URL_PREFIX = "/api/notes/"
+
+
+def _archive_root() -> Path:
+    return server.DATA_DIR / "_archive"
 
 
 def _list_board_slugs() -> list[str]:
@@ -23,13 +36,44 @@ def _parse_date(s: str) -> date | None:
         return None
 
 
-def sweep_done_cards() -> int:
-    """Delete cards in 'done' lists whose updated date is > 14 days ago.
+def _referenced_note_ids(card: dict) -> list[str]:
+    ids = []
+    for att in card.get("attachments") or []:
+        url = att.get("url", "")
+        if url.startswith(NOTE_URL_PREFIX):
+            ids.append(url[len(NOTE_URL_PREFIX):])
+    return ids
 
-    Returns the count of deleted cards.
+
+def _archive_card(board: str, slug: str, updated: date) -> None:
+    """Move card .md and its referenced notes into data/_archive/<board>/<YYYY-MM>/."""
+    bucket = updated.strftime("%Y-%m")
+    dest_dir = _archive_root() / board / bucket
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    card_src = server.DATA_DIR / "boards" / board / "done" / f"{slug}.md"
+    # Read referenced notes before moving the card file.
+    card = server.read_card(board, "done", slug)
+    note_ids = _referenced_note_ids(card) if card else []
+
+    shutil.move(str(card_src), str(dest_dir / f"{slug}.md"))
+
+    if note_ids:
+        notes_dest = dest_dir / "notes"
+        notes_dest.mkdir(exist_ok=True)
+        for note_id in note_ids:
+            note_src = NOTES_DIR / f"{note_id}.md"
+            if note_src.exists():
+                shutil.move(str(note_src), str(notes_dest / f"{note_id}.md"))
+
+
+def sweep_done_cards() -> int:
+    """Archive cards in 'done' lists whose updated date is > 14 days ago.
+
+    Returns the count of archived cards.
     """
     cutoff = date.today() - timedelta(days=DONE_RETENTION_DAYS)
-    deleted = 0
+    archived = 0
     for board in _list_board_slugs():
         done_dir = server.DATA_DIR / "boards" / board / "done"
         order_path = done_dir / "_order.json"
@@ -47,19 +91,17 @@ def sweep_done_cards() -> int:
                 kept.append(slug)
                 continue
             if updated < cutoff:
-                card_path = done_dir / f"{slug}.md"
-                card_path.unlink(missing_ok=True)
-                deleted += 1
+                _archive_card(board, slug, updated)
+                archived += 1
             else:
                 kept.append(slug)
         order_path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
-    return deleted
+    return archived
 
 
 def _collect_referenced_note_ids() -> set[str]:
     """Walk every card across every board and gather note_ids referenced in attachments."""
     referenced = set()
-    prefix = "/api/notes/"
     for board in _list_board_slugs():
         for list_slug in server.LISTS:
             order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
@@ -69,10 +111,7 @@ def _collect_referenced_note_ids() -> set[str]:
                 card = server.read_card(board, list_slug, slug)
                 if card is None:
                     continue
-                for att in card.get("attachments") or []:
-                    url = att.get("url", "")
-                    if url.startswith(prefix):
-                        referenced.add(url[len(prefix):])
+                referenced.update(_referenced_note_ids(card))
     return referenced
 
 
@@ -95,7 +134,7 @@ def sweep_orphan_notes() -> int:
 
 def run_all() -> dict:
     """Run both sweeps. Used by /api/janitor/run and the periodic timer."""
-    done = sweep_done_cards()
+    archived = sweep_done_cards()
     orphans = sweep_orphan_notes()
-    print(f"janitor: deleted {done} done cards, {orphans} orphan notes", flush=True)
-    return {"done_cards_deleted": done, "orphan_notes_deleted": orphans}
+    print(f"janitor: archived {archived} done cards, deleted {orphans} orphan notes", flush=True)
+    return {"done_cards_archived": archived, "orphan_notes_deleted": orphans}
