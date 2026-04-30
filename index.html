@@ -2930,18 +2930,56 @@ const cfgEls = {
   model: document.getElementById('cfg-model'),
   tls: document.getElementById('cfg-tls-verify'),
   status: document.getElementById('cfg-status'),
+  syncRemoteFields: document.getElementById('sync-remote-fields'),
+  syncRemoteUrl: document.getElementById('sync-remote-url'),
+  syncBranch: document.getElementById('sync-branch'),
+  syncGitStatus: document.getElementById('sync-git-status'),
+  syncStatusMsg: document.getElementById('sync-status-msg'),
+  syncPullBtn: document.getElementById('btn-sync-pull'),
 };
 
 async function openSettings() {
-  const cfg = await api.get('/api/llm-config');
+  const [cfg, sync] = await Promise.all([
+    api.get('/api/llm-config'),
+    api.get('/api/sync/config'),
+  ]);
+  // LLM
   cfgEls.token.value = '';
   cfgEls.token.placeholder = cfg.auth_token || 'paste token';
   cfgEls.baseUrl.value = cfg.base_url || '';
   cfgEls.model.value = cfg.model || 'claude-opus-4-7';
   cfgEls.tls.checked = !!cfg.tls_verify;
   cfgEls.status.textContent = '';
+  // Sync
+  document
+    .querySelector(`input[name="sync-mode"][value="${sync.mode}"]`)
+    .checked = true;
+  cfgEls.syncRemoteUrl.value = sync.remote_url || '';
+  cfgEls.syncBranch.value = sync.branch || 'main';
+  applySyncModeVisibility();
+  cfgEls.syncGitStatus.textContent = `Status: ${describeGitStatus(sync.git_status, sync.mode)}`;
+  cfgEls.syncStatusMsg.textContent = '';
   cfgEls.overlay.classList.add('visible');
 }
+
+function applySyncModeVisibility() {
+  const sel = document.querySelector('input[name="sync-mode"]:checked');
+  const mode = sel ? sel.value : 'off';
+  cfgEls.syncRemoteFields.hidden = (mode !== 'remote');
+  cfgEls.syncPullBtn.hidden = (mode !== 'remote');
+}
+
+function describeGitStatus(status, mode) {
+  if (mode === 'off') return 'sync disabled';
+  if (status === 'ok') return 'repository OK · remote configured';
+  if (status === 'no-repo') return 'not initialized — saving will run `git init`';
+  if (status === 'missing-remote') return 'repository OK · no remote configured';
+  return status || 'unknown';
+}
+
+document.querySelectorAll('input[name="sync-mode"]').forEach((el) => {
+  el.addEventListener('change', applySyncModeVisibility);
+});
 
 function closeSettings() {
   cfgEls.overlay.classList.remove('visible');
@@ -2955,18 +2993,53 @@ cfgEls.overlay.addEventListener('click', (e) => {
 });
 
 document.getElementById('btn-cfg-save').addEventListener('click', async () => {
-  const body = {
+  // LLM
+  const llmBody = {
     base_url: cfgEls.baseUrl.value,
     model: cfgEls.model.value,
     tls_verify: cfgEls.tls.checked,
   };
-  if (cfgEls.token.value) body.auth_token = cfgEls.token.value;
+  if (cfgEls.token.value) llmBody.auth_token = cfgEls.token.value;
+  // Sync
+  const modeEl = document.querySelector('input[name="sync-mode"]:checked');
+  const syncBody = {
+    mode: modeEl ? modeEl.value : 'off',
+    remote_url: cfgEls.syncRemoteUrl.value.trim(),
+    branch: cfgEls.syncBranch.value.trim() || 'main',
+  };
   try {
-    await api.put('/api/llm-config', body);
-    closeSettings();
-    refreshNotesButtonState();
+    await api.put('/api/llm-config', llmBody);
+    const syncResp = await api.put('/api/sync/config', syncBody);
+    if (syncResp.reconcile && syncResp.reconcile.status === 'error') {
+      cfgEls.status.textContent = 'Saved (sync warning: ' + syncResp.reconcile.message + ')';
+    } else {
+      closeSettings();
+      refreshNotesButtonState();
+      checkSyncStatus();
+    }
   } catch (err) {
     cfgEls.status.textContent = 'Save failed: ' + err.message;
+  }
+});
+
+document.getElementById('btn-sync-test').addEventListener('click', async () => {
+  cfgEls.syncStatusMsg.textContent = 'Testing…';
+  try {
+    const r = await api.post('/api/sync/test');
+    cfgEls.syncStatusMsg.textContent = (r.ok ? '✓ ' : '✗ ') + (r.message || '');
+  } catch (err) {
+    cfgEls.syncStatusMsg.textContent = '✗ ' + err.message;
+  }
+});
+
+document.getElementById('btn-sync-pull').addEventListener('click', async () => {
+  cfgEls.syncStatusMsg.textContent = 'Pulling…';
+  try {
+    const r = await api.post('/api/sync/pull');
+    cfgEls.syncStatusMsg.textContent =
+      (r.status === 'ok' ? '✓ ' : '✗ ') + (r.message || r.status);
+  } catch (err) {
+    cfgEls.syncStatusMsg.textContent = '✗ ' + err.message;
   }
 });
 
