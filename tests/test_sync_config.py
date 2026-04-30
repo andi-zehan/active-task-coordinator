@@ -141,5 +141,47 @@ class TestSkipPullNotUserWritable(unittest.TestCase):
         self.assertEqual(sanitized["mode"], "local")
 
 
+import subprocess
+
+
+def _run_git(args, cwd):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+class TestMigration(unittest.TestCase):
+    """First-run defaults derived from the current data/ state."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.cfg_path = Path(self.tmp.name) / ".sync-config.json"
+        sync_config.CONFIG_PATH = self.cfg_path
+        self.data_dir = Path(self.tmp.name) / "data"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_no_data_dir_falls_back_to_remote_default(self):
+        cfg = sync_config.migrate_defaults(self.data_dir, fallback_remote_url="https://fallback/x.git")
+        self.assertEqual(cfg["mode"], "remote")
+        self.assertEqual(cfg["remote_url"], "https://fallback/x.git")
+        self.assertEqual(cfg["branch"], "main")
+
+    def test_repo_with_origin_yields_remote_mode(self):
+        self.data_dir.mkdir()
+        _run_git(["init", "-b", "main"], self.data_dir)
+        _run_git(["remote", "add", "origin", "https://x/y.git"], self.data_dir)
+        cfg = sync_config.migrate_defaults(self.data_dir, fallback_remote_url="ignored")
+        self.assertEqual(cfg["mode"], "remote")
+        self.assertEqual(cfg["remote_url"], "https://x/y.git")
+        self.assertEqual(cfg["branch"], "main")
+
+    def test_repo_without_origin_yields_local_mode(self):
+        self.data_dir.mkdir()
+        _run_git(["init", "-b", "main"], self.data_dir)
+        cfg = sync_config.migrate_defaults(self.data_dir, fallback_remote_url="ignored")
+        self.assertEqual(cfg["mode"], "local")
+        self.assertEqual(cfg["remote_url"], "")
+
+
 if __name__ == "__main__":
     unittest.main()

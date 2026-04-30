@@ -4,6 +4,7 @@ Config lives at ./.sync-config.json (gitignored, never synced).
 Reads the file on every call so changes take effect immediately.
 """
 import json
+import subprocess
 from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent / ".sync-config.json"
@@ -111,3 +112,39 @@ def set_skip_next_pull(value: bool) -> None:
 def sanitize_user_updates(updates: dict) -> dict:
     """Drop keys the user is not allowed to write directly."""
     return {k: v for k, v in updates.items() if k in USER_WRITABLE_KEYS}
+
+
+def migrate_defaults(data_dir: Path, fallback_remote_url: str = "") -> dict:
+    """Derive first-run config from the current state of `data_dir`.
+
+    Called only when CONFIG_PATH does not yet exist.
+    """
+    git_dir = data_dir / ".git"
+    if not git_dir.exists():
+        return {
+            "mode": "remote",
+            "remote_url": fallback_remote_url,
+            "branch": "main",
+            "skip_next_pull": False,
+        }
+    origin = _git_origin_url(data_dir)
+    branch = _git_current_branch(data_dir) or "main"
+    if origin:
+        return {"mode": "remote", "remote_url": origin, "branch": branch, "skip_next_pull": False}
+    return {"mode": "local", "remote_url": "", "branch": branch, "skip_next_pull": False}
+
+
+def _git_origin_url(data_dir: Path) -> str:
+    r = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=data_dir, capture_output=True, text=True,
+    )
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _git_current_branch(data_dir: Path) -> str:
+    r = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=data_dir, capture_output=True, text=True,
+    )
+    return r.stdout.strip() if r.returncode == 0 else ""
