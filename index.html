@@ -1238,6 +1238,52 @@ a { color: #0052cc; text-decoration: none; }
         <button id="btn-test-conn" class="header-btn">Test connection</button>
         <span id="cfg-status" style="font-size:13px;"></span>
       </div>
+      <hr style="border:none;border-top:1px solid #dfe1e6;margin:16px 0;" />
+      <h2 style="margin-top:0;">Data sync</h2>
+
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Mode</label>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+            <input type="radio" name="sync-mode" value="off" /> Off (no git activity)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+            <input type="radio" name="sync-mode" value="local" /> Local (commit only)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
+            <input type="radio" name="sync-mode" value="remote" /> Remote (commit + push)
+          </label>
+        </div>
+      </div>
+
+      <div id="sync-remote-fields" hidden>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Remote URL</label>
+          <input id="sync-remote-url" type="text"
+            placeholder="https://github.com/you/atc-content.git"
+            style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+        </div>
+        <div style="margin-bottom:12px;">
+          <label class="field-label">Branch</label>
+          <input id="sync-branch" type="text"
+            style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+        </div>
+        <div id="sync-privacy-warning"
+          style="margin-bottom:12px;padding:8px 10px;background:#fff4e5;border:1px solid #ffb84d;border-radius:4px;font-size:13px;color:#7a4a00;">
+          ⚠️ Your cards may contain personal or work-sensitive notes. Make sure the remote repository is <strong>private</strong>. ATC will not check this for you.
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;font-size:12px;color:#5e6c84;">
+        <span id="sync-git-status">Status: …</span>
+      </div>
+
+      <div class="modal-actions" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <button id="btn-sync-test" class="header-btn">Test sync</button>
+        <button id="btn-sync-pull" class="header-btn" hidden>Pull from remote</button>
+        <span id="sync-status-msg" style="font-size:13px;"></span>
+      </div>
+
       <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
         <button id="btn-cfg-cancel" class="header-btn">Cancel</button>
         <button id="btn-cfg-save" class="btn-new-card">Save</button>
