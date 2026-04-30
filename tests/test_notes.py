@@ -40,53 +40,6 @@ def make_board(data_dir: Path, slug: str, name: str = "Test Board"):
         boards_order.write_text(json.dumps(order), encoding="utf-8")
 
 
-class TestSnapshot(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.data_dir = Path(self.tmp.name)
-        server.DATA_DIR = self.data_dir
-        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
-        make_board(self.data_dir, "alpha", "Alpha Project")
-        make_card(self.data_dir, "alpha", "backlog", "draft-spec",
-            "---\ntitle: Draft spec\nlabels: [doc]\ndue: 2026-05-01\nassignee: Me\n"
-            "created: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
-            "## Description\n\nWrite the spec.\n\n\n"
-            "## Checklist\n\n- [ ] Outline\n- [x] Title\n\n\n"
-            "## Comments\n\n")
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def test_snapshot_includes_board(self):
-        snap = notes.build_snapshot()
-        self.assertIn("alpha", [b["slug"] for b in snap["boards"]])
-
-    def test_snapshot_includes_card_with_compact_fields(self):
-        snap = notes.build_snapshot()
-        cards = snap["boards"][0]["cards"]
-        self.assertEqual(len(cards), 1)
-        c = cards[0]
-        self.assertEqual(c["b"], "alpha")
-        self.assertEqual(c["l"], "backlog")
-        self.assertEqual(c["s"], "draft-spec")
-        self.assertEqual(c["title"], "Draft spec")
-        self.assertEqual(c["labels"], ["doc"])
-        self.assertEqual(c["due"], "2026-05-01")
-        self.assertEqual(c["assignee"], "Me")
-        self.assertIn("Outline", c["todo"])
-        self.assertIn("Title", c["done"])
-
-    def test_snapshot_truncates_description_to_200(self):
-        long_desc = "x" * 500
-        make_card(self.data_dir, "alpha", "ideas", "long-card",
-            f"---\ntitle: Long\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
-            f"## Description\n\n{long_desc}\n\n\n## Checklist\n\n\n## Comments\n\n")
-        snap = notes.build_snapshot()
-        all_cards = [c for b in snap["boards"] for c in b["cards"]]
-        long = next(c for c in all_cards if c["s"] == "long-card")
-        self.assertLessEqual(len(long["desc"]), 200)
-
-
 class TestArchiveNote(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -148,24 +101,47 @@ class TestReadNote(unittest.TestCase):
         self.assertIsNone(notes.read_note("foo/bar"))
 
 
-class FakeMessage:
-    def __init__(self, text):
-        self.content = [type("Block", (), {"text": text, "type": "text"})()]
+class FakeBlock:
+    """Mimics an Anthropic SDK content block (text or tool_use)."""
+
+    def __init__(self, type_, **kwargs):
+        self.type = type_
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+def text_block(text):
+    return FakeBlock("text", text=text)
+
+
+def tool_use(name, input_, id_=None):
+    return FakeBlock("tool_use", name=name, input=input_, id=id_ or f"tu_{name}")
+
+
+class FakeResponse:
+    def __init__(self, content_blocks):
+        self.content = content_blocks
+        # stop_reason is informational only; analyze() uses presence of tool_use blocks.
+        self.stop_reason = "tool_use" if any(b.type == "tool_use" for b in content_blocks) else "end_turn"
 
 
 class FakeMessages:
-    def __init__(self, response_text):
-        self._response_text = response_text
-        self.last_kwargs = None
+    """Returns a scripted sequence of FakeResponse objects, one per .create() call."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
 
     def create(self, **kwargs):
-        self.last_kwargs = kwargs
-        return FakeMessage(self._response_text)
+        self.calls.append(kwargs)
+        if not self._responses:
+            raise AssertionError("FakeMessages.create called more times than scripted")
+        return self._responses.pop(0)
 
 
 class FakeClient:
-    def __init__(self, response_text):
-        self.messages = FakeMessages(response_text)
+    def __init__(self, responses):
+        self.messages = FakeMessages(responses)
 
 
 class TestAnalyze(unittest.TestCase):
@@ -180,47 +156,163 @@ class TestAnalyze(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_analyze_parses_json_response(self):
-        fake_response = json.dumps({
-            "summary": "Meeting summary",
-            "operations": [
-                {"op": "create_card", "board": "alpha", "list": "backlog",
-                 "title": "New task", "confidence": "high", "reason": "explicit ask"}
-            ],
-        })
-        client = FakeClient(fake_response)
+    def test_analyze_collects_queued_op_and_summary(self):
+        client = FakeClient([
+            FakeResponse([
+                tool_use("create_card", {
+                    "board": "alpha", "list": "backlog", "title": "New task",
+                    "confidence": "high", "reason": "explicit ask",
+                }),
+            ]),
+            FakeResponse([tool_use("finish", {"summary": "Meeting summary"})]),
+        ])
         result = notes.analyze("note text", "Title", model="claude-opus-4-7", client=client)
         self.assertEqual(result["summary"], "Meeting summary")
         self.assertEqual(len(result["operations"]), 1)
-        self.assertEqual(result["operations"][0]["title"], "New task")
+        op = result["operations"][0]
+        self.assertEqual(op["op"], "create_card")
+        self.assertEqual(op["title"], "New task")
         self.assertTrue(result["note_id"].endswith("-title"))
 
     def test_analyze_archives_note(self):
-        client = FakeClient('{"summary": "", "operations": []}')
+        client = FakeClient([
+            FakeResponse([tool_use("finish", {"summary": ""})]),
+        ])
         result = notes.analyze("note body", "T", model="claude-opus-4-7", client=client)
         archived = (notes.NOTES_DIR / f"{result['note_id']}.md").read_text(encoding="utf-8")
         self.assertIn("note body", archived)
 
-    def test_analyze_extracts_json_from_fenced_block(self):
-        fenced = '```json\n{"summary": "x", "operations": []}\n```'
-        client = FakeClient(fenced)
+    def test_analyze_handles_read_tool_then_finish(self):
+        make_board(self.data_dir, "alpha", "Alpha")
+        make_card(self.data_dir, "alpha", "backlog", "spec",
+            "---\ntitle: Spec\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\nthe spec\n\n\n## Checklist\n\n\n## Comments\n\n")
+        client = FakeClient([
+            FakeResponse([tool_use("search_cards", {"query": "spec"})]),
+            FakeResponse([tool_use("finish", {"summary": "nothing to do"})]),
+        ])
         result = notes.analyze("body", "T", model="claude-opus-4-7", client=client)
-        self.assertEqual(result["summary"], "x")
+        self.assertEqual(result["operations"], [])
+        # Second call's messages should include the tool_result from the search.
+        second_msgs = client.messages.calls[1]["messages"]
+        last_user = second_msgs[-1]
+        self.assertEqual(last_user["role"], "user")
+        self.assertEqual(last_user["content"][0]["type"], "tool_result")
 
-    def test_analyze_invalid_json_raises(self):
-        client = FakeClient("this is not json at all")
+    def test_analyze_no_tool_use_breaks_loop(self):
+        # Model produces no tool_use blocks at all and no proposed ops -> raises.
+        client = FakeClient([FakeResponse([text_block("I'm confused.")])])
         with self.assertRaises(notes.LLMResponseError):
             notes.analyze("body", "T", model="claude-opus-4-7", client=client)
 
-    def test_analyze_passes_model_and_caching(self):
-        client = FakeClient('{"summary": "", "operations": []}')
+    def test_analyze_max_turns_with_queued_op_returns_partial(self):
+        # Model loops without finishing but did queue an op — return what we have.
+        client = FakeClient([
+            FakeResponse([tool_use("create_card", {
+                "board": "a", "list": "backlog", "title": "X",
+                "confidence": "med", "reason": "y",
+            })]),
+            FakeResponse([tool_use("list_boards", {})]),
+            FakeResponse([tool_use("list_boards", {})]),
+        ])
+        result = notes.analyze("body", "T", model="claude-opus-4-7",
+                               client=client, max_turns=3)
+        self.assertEqual(len(result["operations"]), 1)
+        self.assertEqual(result["summary"], "")
+
+    def test_analyze_passes_model_tools_and_caching(self):
+        client = FakeClient([
+            FakeResponse([tool_use("finish", {"summary": ""})]),
+        ])
         notes.analyze("body", "T", model="claude-sonnet-4-6", client=client)
-        kwargs = client.messages.last_kwargs
+        kwargs = client.messages.calls[0]
         self.assertEqual(kwargs["model"], "claude-sonnet-4-6")
-        # System prompt cached
-        sys_block = kwargs["system"][0] if isinstance(kwargs["system"], list) else None
-        self.assertIsNotNone(sys_block)
+        self.assertIn("tools", kwargs)
+        self.assertTrue(any(t["name"] == "create_card" for t in kwargs["tools"]))
+        self.assertTrue(any(t["name"] == "finish" for t in kwargs["tools"]))
+        sys_block = kwargs["system"][0]
         self.assertEqual(sys_block.get("cache_control"), {"type": "ephemeral"})
+        # The board INDEX is the cached prefix in user content.
+        index_block = kwargs["messages"][0]["content"][0]
+        self.assertIn("BOARD INDEX", index_block["text"])
+        self.assertEqual(index_block.get("cache_control"), {"type": "ephemeral"})
+
+
+class TestBuildToc(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name)
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        make_board(self.data_dir, "alpha", "Alpha Project")
+        make_card(self.data_dir, "alpha", "backlog", "draft",
+            "---\ntitle: Draft\nlabels: [doc]\ndue: 2026-05-01\nassignee: Me\n"
+            "created: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\nlong text that should be omitted from the toc.\n\n\n"
+            "## Checklist\n\n- [ ] hidden\n\n\n## Comments\n\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_toc_omits_description_and_checklist(self):
+        toc = notes.build_toc()
+        card = toc["boards"][0]["cards"][0]
+        self.assertEqual(card["title"], "Draft")
+        self.assertEqual(card["labels"], ["doc"])
+        self.assertEqual(card["due"], "2026-05-01")
+        self.assertNotIn("desc", card)
+        self.assertNotIn("todo", card)
+        self.assertNotIn("done", card)
+
+
+class TestReadTools(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name)
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        make_board(self.data_dir, "alpha", "Alpha")
+        make_board(self.data_dir, "beta", "Beta")
+        make_card(self.data_dir, "alpha", "backlog", "draft-spec",
+            "---\ntitle: Draft spec\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\nWrite the spec.\n\n\n"
+            "## Checklist\n\n- [ ] Outline\n- [x] Title\n\n\n"
+            "## Comments\n\n")
+        make_card(self.data_dir, "beta", "in-progress", "ship-it",
+            "---\ntitle: Ship it\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
+            "## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_list_boards_returns_card_counts(self):
+        out = notes._tool_list_boards({})
+        names = {b["slug"]: b for b in out["boards"]}
+        self.assertEqual(names["alpha"]["card_count"], 1)
+        self.assertEqual(names["beta"]["card_count"], 1)
+
+    def test_list_cards_filters_by_list(self):
+        out = notes._tool_list_cards({"board": "alpha", "list": "backlog"})
+        self.assertEqual(len(out["cards"]), 1)
+        self.assertEqual(out["cards"][0]["s"], "draft-spec")
+
+    def test_list_cards_unknown_board(self):
+        self.assertIn("error", notes._tool_list_cards({"board": "ghost"}))
+
+    def test_search_cards_finds_substring(self):
+        out = notes._tool_search_cards({"query": "spec"})
+        slugs = [m["s"] for m in out["matches"]]
+        self.assertIn("draft-spec", slugs)
+
+    def test_read_card_returns_split_checklist(self):
+        out = notes._tool_read_card({"board": "alpha", "list": "backlog", "slug": "draft-spec"})
+        self.assertIn("Outline", out["checklist_todo"])
+        self.assertIn("Title", out["checklist_done"])
+        self.assertEqual(out["title"], "Draft spec")
+
+    def test_read_card_missing(self):
+        out = notes._tool_read_card({"board": "alpha", "list": "backlog", "slug": "nope"})
+        self.assertIn("error", out)
 
 
 class TestApply(unittest.TestCase):

@@ -516,22 +516,31 @@ class TestNotesEndpoints(unittest.TestCase):
         server.DATA_DIR = self.data_dir
         (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
         notes_mod.NOTES_DIR = Path(self.tmp.name) / "notes"
-        # Stub the LLM client
-        fake_response_text = json.dumps({
-            "summary": "Talked about X.",
-            "operations": [
-                {"op": "create_card", "board": "alpha", "list": "backlog",
-                 "title": "Do thing", "confidence": "high", "reason": "explicit"}
-            ],
-        })
+        # Stub the LLM client to drive the tool-use loop:
+        # turn 1 -> create_card, turn 2 -> finish.
+        def _block(type_, **kw):
+            return type("B", (), {"type": type_, **kw})()
+        def _resp(blocks):
+            stop = "tool_use" if any(b.type == "tool_use" for b in blocks) else "end_turn"
+            return type("R", (), {"content": blocks, "stop_reason": stop})()
+        scripted = [
+            _resp([_block("tool_use", id="t1", name="create_card", input={
+                "board": "alpha", "list": "backlog", "title": "Do thing",
+                "confidence": "high", "reason": "explicit",
+            })]),
+            _resp([_block("tool_use", id="t2", name="finish", input={
+                "summary": "Talked about X.",
+            })]),
+        ]
+        class FakeMessages:
+            def __init__(self):
+                self._queue = list(scripted)
+            def create(self, **kwargs):
+                return self._queue.pop(0)
         class FakeClient:
-            class messages:
-                @staticmethod
-                def create(**kwargs):
-                    return type("R", (), {
-                        "content": [type("B", (), {"text": fake_response_text, "type": "text"})()]
-                    })()
-        # Make get_client return our fake
+            def __init__(self):
+                self.messages = FakeMessages()
+        # Each request gets a fresh client so the scripted queue restarts.
         import llm_config
         self._orig_get_client = llm_config.get_client
         llm_config.get_client = lambda: FakeClient()
