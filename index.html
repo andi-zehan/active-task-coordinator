@@ -2880,22 +2880,30 @@ document.getElementById('nc-title').addEventListener('keydown', (e) => {
 
 document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
 
+let currentSyncMode = 'remote'; // updated by checkSyncStatus
+
 document.getElementById('btn-sync').addEventListener('click', async () => {
+  if (currentSyncMode === 'off') return; // disabled
   const btn = document.getElementById('btn-sync');
+  const verb = currentSyncMode === 'local' ? 'Committing' : 'Syncing';
+  const okLabel = currentSyncMode === 'local' ? '✓ Committed' : '✓ Synced';
   btn.classList.add('syncing');
-  btn.textContent = '⟳ Syncing...';
+  btn.textContent = '⟳ ' + verb + '...';
   try {
     const result = await api.post('/api/sync/push');
     btn.classList.remove('syncing');
     if (result.status === 'ok') {
       btn.classList.add('sync-ok');
-      btn.textContent = '✓ Synced';
+      btn.textContent = okLabel;
     } else if (result.status === 'no-changes') {
       btn.classList.add('sync-ok');
       btn.textContent = '✓ Up to date';
+    } else if (result.status === 'skipped') {
+      btn.classList.add('sync-ok');
+      btn.textContent = '○ ' + (result.message || 'skipped');
     } else {
       btn.classList.add('sync-err');
-      btn.textContent = '✗ ' + (result.message || 'Sync failed');
+      btn.textContent = '✗ ' + (result.message || 'failed');
     }
   } catch (err) {
     btn.classList.remove('syncing');
@@ -2910,11 +2918,23 @@ document.getElementById('btn-sync').addEventListener('click', async () => {
 
 async function checkSyncStatus() {
   const btn = document.getElementById('btn-sync');
-  if (btn.classList.contains('syncing') || btn.classList.contains('sync-ok') || btn.classList.contains('sync-err')) return;
+  if (
+    btn.classList.contains('syncing') ||
+    btn.classList.contains('sync-ok') ||
+    btn.classList.contains('sync-err')
+  ) return;
   try {
     const result = await api.get('/api/sync/status');
-    btn.classList.toggle('sync-dirty', result.dirty);
-    btn.textContent = result.dirty ? '↻ Sync needed' : '↻ Sync';
+    currentSyncMode = result.mode || 'remote';
+    btn.disabled = (currentSyncMode === 'off');
+    btn.classList.toggle('sync-dirty', !!result.dirty);
+    if (currentSyncMode === 'off') {
+      btn.textContent = 'Sync off';
+    } else if (currentSyncMode === 'local') {
+      btn.textContent = result.dirty ? '↻ Commit needed' : '↻ Commit';
+    } else {
+      btn.textContent = result.dirty ? '↻ Sync needed' : '↻ Sync';
+    }
   } catch { }
 }
 checkSyncStatus();
@@ -3175,7 +3195,8 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
       <ul>${skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('')}</ul>` : ''}
     <p>Note kept at <a href="/api/notes/${encodeURIComponent(currentNoteId)}" target="_blank">/api/notes/${escHtml(currentNoteId)}</a></p>
   `;
-  document.getElementById('btn-notes-sync').hidden = applied.length === 0;
+  document.getElementById('btn-notes-sync').hidden =
+    applied.length === 0 || currentSyncMode === 'off';
   document.getElementById('btn-notes-sync').disabled = false;
   document.getElementById('btn-notes-sync').textContent = 'Sync now';
   showNotesStep(3);
@@ -3184,11 +3205,14 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
 
 document.getElementById('btn-notes-sync').addEventListener('click', async () => {
   const btn = document.getElementById('btn-notes-sync');
+  if (currentSyncMode === 'off') return;
+  const verb = currentSyncMode === 'local' ? 'Committing' : 'Syncing';
+  const okLabel = currentSyncMode === 'local' ? 'Committed ✓' : 'Synced ✓';
   btn.disabled = true;
-  btn.textContent = 'Syncing…';
+  btn.textContent = verb + '…';
   try {
     await api.post('/api/sync/push');
-    btn.textContent = 'Synced ✓';
+    btn.textContent = okLabel;
   } catch (err) {
     btn.textContent = '✗ ' + err.message;
     btn.disabled = false;
