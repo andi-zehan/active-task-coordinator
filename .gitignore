@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 .superpowers/
 .llm-config.json
+.sync-config.json
 notes/
