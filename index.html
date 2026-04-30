@@ -418,7 +418,7 @@ a { color: #0052cc; text-decoration: none; }
   align-items: flex-start;
 }
 .board-column {
-  flex: 0 0 280px;
+  flex: 0 0 400px;
   background: #ebecf0;
   border-radius: 8px;
   padding: 10px;
@@ -568,17 +568,18 @@ a { color: #0052cc; text-decoration: none; }
 /* ── Dashboard View ───────────────────────────────────────────── */
 .dashboard-view {
   padding: 24px;
-  max-width: 1280px;
+  max-width: 1600px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
 }
 .dash-section {
   background: #e4e6ea;
   border-radius: 10px;
-  padding: 12px;
+  padding: 12px 12px 40px;
   min-width: 0;
+  min-height: 140px;
 }
 .dash-section.overdue { background: #304D6D; }
 .dash-section.today { background: #63ADF2; }
@@ -666,8 +667,16 @@ a { color: #0052cc; text-decoration: none; }
 .dash-card .dash-due.overdue { color: #e74c3c; font-weight: 600; }
 .dash-card .dash-list { font-size: 11px; color: #5e6c84; background: #f4f5f7; padding: 1px 6px; border-radius: 3px; }
 .dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 6px; }
+.dash-card.dragging { opacity: 0.4; }
+.dash-section.drag-over { outline: 2px dashed #0052cc; outline-offset: -2px; }
+.dash-section.drag-over.no-drop { outline-color: #e74c3c; cursor: not-allowed; }
 
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
+  .dashboard-view {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
   .dashboard-view {
     grid-template-columns: 1fr;
   }
@@ -1308,6 +1317,7 @@ a { color: #0052cc; text-decoration: none; }
           <label class="field-label">Note text</label>
           <textarea id="notes-text" rows="20" style="width:100%;font-family:monospace;font-size:13px;padding:8px;border:1px solid #dfe1e6;border-radius:4px;box-sizing:border-box;"></textarea>
         </div>
+        <div id="notes-events" hidden style="margin-bottom:12px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
           <span id="notes-spinner" hidden style="font-size:13px;color:#5e6c84;">Analyzing…</span>
           <button id="btn-notes-cancel" class="header-btn">Cancel</button>
@@ -1987,9 +1997,16 @@ function createCardElement(card) {
 
 function updateCardCount(cardsContainer) {
   const col = cardsContainer.closest('.board-column');
-  if (!col) return;
-  const countEl = col.querySelector('.card-count');
-  if (countEl) countEl.textContent = cardsContainer.querySelectorAll('.card').length;
+  if (col) {
+    const countEl = col.querySelector('.card-count');
+    if (countEl) countEl.textContent = cardsContainer.querySelectorAll('.card').length;
+  }
+  // Per-board total in the swimlane header.
+  const swimlane = cardsContainer.closest('.swimlane');
+  if (swimlane) {
+    const totalEl = swimlane.querySelector('.swimlane-card-count');
+    if (totalEl) totalEl.textContent = swimlane.querySelectorAll('.column-cards .card').length;
+  }
 }
 
 function removeDropIndicators() {
@@ -2096,9 +2113,9 @@ async function renderDashboard() {
     return groups;
   }
 
-  function renderSection(title, cssClass, cards) {
+  function renderSection(title, cssClass, bucket, cards) {
     const groups = groupByBoard(cards);
-    let html = `<div class="dash-section ${cssClass}">
+    let html = `<div class="dash-section ${cssClass}" data-bucket="${bucket}">
       <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span></div>`;
     if (cards.length === 0) {
       html += '<div class="dash-empty">No cards</div>';
@@ -2109,7 +2126,7 @@ async function renderDashboard() {
           const labels = Array.isArray(c.labels) ? c.labels : [];
           const labelDots = labels.map(l => `<div class="dash-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('');
           const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
-          html += `<div class="dash-card" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
+          html += `<div class="dash-card" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
             <div class="dash-labels">${labelDots}</div>
             <span class="dash-title">${escHtml(c.title)}</span>
             <span class="dash-list">${formatListName(c.list)}</span>
@@ -2123,18 +2140,94 @@ async function renderDashboard() {
   }
 
   container.innerHTML =
-    renderSection('Overdue', 'overdue', data.overdue || []) +
-    renderSection('Today', 'today', data.today || []) +
-    renderSection('This Week', 'week', data.this_week || []) +
-    renderSection('Next Week', 'next-week', data.next_week || []) +
-    renderSection('Later', 'later', data.later || []) +
-    renderSection('Someday', 'someday', data.someday || []);
+    renderSection('Overdue',   'overdue',   'overdue',   data.overdue || []) +
+    renderSection('Today',     'today',     'today',     data.today || []) +
+    renderSection('This Week', 'week',      'this_week', data.this_week || []) +
+    renderSection('Next Week', 'next-week', 'next_week', data.next_week || []) +
+    renderSection('Later',     'later',     'later',     data.later || []) +
+    renderSection('Someday',   'someday',   'someday',   data.someday || []);
 
   container.querySelectorAll('.dash-card').forEach(el => {
     el.addEventListener('click', () => {
       openCardModal(el.dataset.board, el.dataset.list, el.dataset.card);
     });
+    el.addEventListener('dragstart', (e) => {
+      el.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify({
+        board: el.dataset.board, list: el.dataset.list, card: el.dataset.card,
+      }));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      container.querySelectorAll('.dash-section.drag-over')
+        .forEach(s => s.classList.remove('drag-over', 'no-drop'));
+    });
   });
+
+  container.querySelectorAll('.dash-section').forEach(section => {
+    const bucket = section.dataset.bucket;
+    section.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (bucket === 'overdue') {
+        e.dataTransfer.dropEffect = 'none';
+        section.classList.add('drag-over', 'no-drop');
+      } else {
+        e.dataTransfer.dropEffect = 'move';
+        section.classList.add('drag-over');
+      }
+    });
+    section.addEventListener('dragleave', (e) => {
+      // Only clear when actually leaving the section, not entering a child.
+      if (!section.contains(e.relatedTarget)) {
+        section.classList.remove('drag-over', 'no-drop');
+      }
+    });
+    section.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      section.classList.remove('drag-over', 'no-drop');
+      if (bucket === 'overdue') return;
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); }
+      catch { return; }
+      const newDue = bucketToDueDate(bucket);
+      try {
+        await api.put(
+          `/api/cards/${payload.board}/${payload.list}/${payload.card}`,
+          { due: newDue });
+      } catch (err) {
+        alert('Failed to update due date: ' + err.message);
+        return;
+      }
+      await renderDashboard();
+    });
+  });
+}
+
+function bucketToDueDate(bucket) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  function fmt(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  function fridayOfWeek(weeksAhead) {
+    const d = new Date(today);
+    const dow = d.getDay();              // 0 = Sun, 5 = Fri
+    const diff = (5 - dow + 7) % 7;      // days to upcoming Friday (0 if today is Friday)
+    d.setDate(d.getDate() + diff + weeksAhead * 7);
+    return d;
+  }
+  switch (bucket) {
+    case 'today':     return fmt(today);
+    case 'this_week': return fmt(fridayOfWeek(0));
+    case 'next_week': return fmt(fridayOfWeek(1));
+    case 'later':     return fmt(fridayOfWeek(3));
+    case 'someday':   return '';
+    default:          return '';
+  }
 }
 
 /* ================================================================
@@ -3105,6 +3198,9 @@ document.getElementById('btn-process-notes').addEventListener('click', () => {
   document.getElementById('notes-text').value = '';
   document.getElementById('notes-title').value = '';
   document.getElementById('notes-spinner').hidden = true;
+  const evts = document.getElementById('notes-events');
+  evts.hidden = true;
+  evts.innerHTML = '';
   showNotesStep(1);
   document.getElementById('notes-overlay').classList.add('visible');
 });
@@ -3116,13 +3212,90 @@ document.getElementById('notes-overlay').addEventListener('click', (e) => {
   if (e.target === document.getElementById('notes-overlay')) closeNotesModal();
 });
 
+function formatNotesEvent(ev) {
+  switch (ev.type) {
+    case 'started':  return `🟢 Started — note ${ev.note_id}`;
+    case 'turn':     return `↻ Turn ${ev.n}`;
+    case 'tool': {
+      const a = ev.args || {};
+      if (ev.name === 'search_cards')  return `🔍 search_cards "${a.query || ''}"`;
+      if (ev.name === 'read_card')     return `📄 read_card ${a.board || '?'}/${a.list || '?'}/${a.slug || '?'}`;
+      if (ev.name === 'list_boards')   return `📚 list_boards`;
+      if (ev.name === 'list_cards')    return `📋 list_cards ${a.board || '?'}${a.list ? '/' + a.list : ''}`;
+      if (ev.name === 'create_card')   return `➕ create_card "${a.title || ''}" → ${a.board || '?'}/${a.list || '?'}`;
+      if (ev.name === 'add_comment')   return `💬 add_comment on ${a.board || '?'}/${a.card || '?'}`;
+      if (ev.name === 'tick_checklist')     return `☑️ tick "${a.item || ''}" on ${a.card || '?'}`;
+      if (ev.name === 'add_checklist_item') return `➕ checklist item "${a.item || ''}" on ${a.card || '?'}`;
+      if (ev.name === 'move_card')     return `↪️ move ${a.card || '?'} → ${a.target_list || '?'}`;
+      if (ev.name === 'update_field')  return `✏️ update ${a.field || '?'} on ${a.card || '?'}`;
+      if (ev.name === 'finish')        return `🏁 finish`;
+      return `→ ${ev.name}`;
+    }
+    case 'result':   return `   ${ev.summary || ''}`;
+    case 'queued':   return `   queued ${ev.op}`;
+    case 'finish':   return `🏁 ${ev.summary || ''}`;
+    case 'done':     return `✅ Done — ${(ev.operations || []).length} op(s) proposed`;
+    case 'error':    return `❌ ${ev.message || 'error'}`;
+    default:         return JSON.stringify(ev);
+  }
+}
+
+function appendNotesEvent(text) {
+  const panel = document.getElementById('notes-events');
+  const line = document.createElement('div');
+  line.textContent = text;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+async function streamNotesAnalyze(text, title, onEvent) {
+  const r = await fetch('/api/notes/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({ text, title }),
+  });
+  if (!r.ok) throw new Error(`POST /api/notes/analyze: ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let lastDone = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // SSE: events are separated by a blank line; each 'data:' line carries our JSON.
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const dataLines = block.split('\n')
+        .filter(l => l.startsWith('data:'))
+        .map(l => l.slice(5).trimStart());
+      if (!dataLines.length) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLines.join('\n')); }
+      catch { continue; }
+      onEvent(parsed);
+      if (parsed.type === 'done') lastDone = parsed;
+      if (parsed.type === 'error') throw new Error(parsed.message || 'analyze error');
+    }
+  }
+  if (!lastDone) throw new Error('stream ended without a done event');
+  return lastDone;
+}
+
 document.getElementById('btn-notes-analyze').addEventListener('click', async () => {
   const text = document.getElementById('notes-text').value.trim();
   if (!text) return;
   const title = document.getElementById('notes-title').value;
-  document.getElementById('notes-spinner').hidden = false;
+  const evts = document.getElementById('notes-events');
+  evts.hidden = false;
+  evts.innerHTML = '';
+  document.getElementById('btn-notes-analyze').disabled = true;
   try {
-    const result = await api.post('/api/notes/analyze', { text, title });
+    const result = await streamNotesAnalyze(text, title, (ev) => {
+      appendNotesEvent(formatNotesEvent(ev));
+    });
     currentNoteId = result.note_id;
     currentOps = result.operations || [];
     document.getElementById('notes-summary').textContent =
@@ -3130,9 +3303,10 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
     renderOps(currentOps);
     showNotesStep(2);
   } catch (err) {
+    appendNotesEvent(`❌ ${err.message}`);
     alert('Analyze failed: ' + err.message);
   } finally {
-    document.getElementById('notes-spinner').hidden = true;
+    document.getElementById('btn-notes-analyze').disabled = false;
   }
 });
 

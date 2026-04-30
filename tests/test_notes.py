@@ -238,6 +238,63 @@ class TestAnalyze(unittest.TestCase):
         self.assertEqual(index_block.get("cache_control"), {"type": "ephemeral"})
 
 
+class TestAnalyzeStream(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+        notes.NOTES_DIR = Path(self.tmp.name) / "notes"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_stream_emits_started_turn_tool_queued_finish_done(self):
+        client = FakeClient([
+            FakeResponse([tool_use("create_card", {
+                "board": "alpha", "list": "backlog", "title": "Build it",
+                "confidence": "high", "reason": "explicit",
+            })]),
+            FakeResponse([tool_use("finish", {"summary": "All clear."})]),
+        ])
+        events = list(notes.analyze_stream("body", "T",
+                                            model="claude-opus-4-7", client=client))
+        types = [e["type"] for e in events]
+        # First event is started, last is done.
+        self.assertEqual(types[0], "started")
+        self.assertEqual(types[-1], "done")
+        self.assertIn("turn", types)
+        self.assertIn("tool", types)
+        self.assertIn("queued", types)
+        self.assertIn("finish", types)
+        # Queued event carries the title.
+        queued = next(e for e in events if e["type"] == "queued")
+        self.assertEqual(queued["title"], "Build it")
+        # Done carries the operations list.
+        done = events[-1]
+        self.assertEqual(len(done["operations"]), 1)
+        self.assertEqual(done["summary"], "All clear.")
+
+    def test_stream_read_tool_emits_result_summary(self):
+        make_board(self.data_dir, "alpha", "Alpha")
+        client = FakeClient([
+            FakeResponse([tool_use("list_boards", {})]),
+            FakeResponse([tool_use("finish", {"summary": ""})]),
+        ])
+        events = list(notes.analyze_stream("body", "T",
+                                            model="claude-opus-4-7", client=client))
+        result = next(e for e in events if e["type"] == "result")
+        self.assertEqual(result["name"], "list_boards")
+        self.assertIn("board", result["summary"])
+
+    def test_stream_emits_error_when_model_gives_up(self):
+        client = FakeClient([FakeResponse([text_block("idk")])])
+        events = list(notes.analyze_stream("body", "T",
+                                            model="claude-opus-4-7", client=client))
+        self.assertEqual(events[-1]["type"], "error")
+
+
 class TestBuildToc(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -658,18 +658,26 @@ def _block_to_dict(block) -> dict:
     return {"type": btype or "unknown"}
 
 
-def analyze(body: str, title: str, *, model: str, client, max_turns: int = MAX_TOOL_TURNS) -> dict:
-    """Archive the note, run a tool-use loop, return queued ops + summary.
+def analyze_stream(body: str, title: str, *, model: str, client,
+                   max_turns: int = MAX_TOOL_TURNS):
+    """Run the tool-use loop, yielding one event dict per significant step.
 
-    The model uses read tools to inspect boards/cards and write tools to
-    queue ops. Write tools do NOT execute; the queue is returned for the
-    user to review and confirm via apply_operations.
+    Event shapes (all dicts have a 'type' key):
+      {"type": "started",  "note_id": str}
+      {"type": "turn",     "n": int}
+      {"type": "tool",     "name": str, "args": dict}        # before invocation
+      {"type": "result",   "name": str, "summary": str}      # short summary of payload
+      {"type": "queued",   "op": str, "title"|"text"|...: ...}  # write tool queued
+      {"type": "finish",   "summary": str}
+      {"type": "done",     "note_id": str, "summary": str, "operations": [...]}
+      {"type": "error",    "message": str}                   # terminal
 
-    Returns: {"note_id": str, "summary": str, "operations": [...]}.
+    The 'done' event carries the same dict that the old analyze() returned.
     """
     note_id = archive_note(body, title)
-    toc = build_toc()
+    yield {"type": "started", "note_id": note_id}
 
+    toc = build_toc()
     proposed_ops: list[dict] = []
     summary = ""
     finished = False
@@ -695,7 +703,8 @@ def analyze(body: str, title: str, *, model: str, client, max_turns: int = MAX_T
         },
     ]
 
-    for _ in range(max_turns):
+    for turn in range(1, max_turns + 1):
+        yield {"type": "turn", "n": turn}
         response = client.messages.create(
             model=model,
             max_tokens=4096,
@@ -718,19 +727,28 @@ def analyze(body: str, title: str, *, model: str, client, max_turns: int = MAX_T
             name = getattr(block, "name", "")
             args = getattr(block, "input", {}) or {}
             tool_id = getattr(block, "id", "")
+            yield {"type": "tool", "name": name, "args": args}
             try:
                 if name == "finish":
                     summary = args.get("summary", "")
                     finished = True
                     payload = {"ok": True}
+                    yield {"type": "finish", "summary": summary}
                 elif name in READ_TOOLS:
                     payload = READ_TOOLS[name](args)
+                    yield {"type": "result", "name": name,
+                           "summary": _summarize_read_result(name, args, payload)}
                 elif name in _WRITE_OP_NAMES:
                     payload = _queue_op(name, args, proposed_ops)
+                    yield {"type": "queued", "op": name,
+                           **_queued_summary_fields(name, args)}
                 else:
                     payload = {"error": f"unknown tool '{name}'"}
+                    yield {"type": "result", "name": name,
+                           "summary": f"unknown tool '{name}'"}
             except (KeyError, ValueError, TypeError) as e:
                 payload = {"error": str(e)}
+                yield {"type": "result", "name": name, "summary": f"error: {e}"}
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tool_id,
@@ -743,10 +761,70 @@ def analyze(body: str, title: str, *, model: str, client, max_turns: int = MAX_T
             break
 
     if not finished and not proposed_ops:
-        # Model exited without proposing anything and without calling finish.
-        # Surface a useful error so the UI doesn't show a blank result.
-        raise LLMResponseError(
-            "Model exited without proposing operations or calling finish."
-        )
+        yield {"type": "error",
+               "message": "Model exited without proposing operations or calling finish."}
+        return
 
-    return {"note_id": note_id, "summary": summary, "operations": proposed_ops}
+    yield {"type": "done", "note_id": note_id,
+           "summary": summary, "operations": proposed_ops}
+
+
+def _summarize_read_result(name: str, args: dict, payload: dict) -> str:
+    """Short human-readable description of what a read tool returned."""
+    if "error" in payload:
+        return f"error: {payload['error']}"
+    if name == "list_boards":
+        n = len(payload.get("boards", []))
+        return f"{n} board(s)"
+    if name == "list_cards":
+        n = len(payload.get("cards", []))
+        scope = args.get("board", "?")
+        if args.get("list"):
+            scope += "/" + args["list"]
+        return f"{n} card(s) in {scope}"
+    if name == "search_cards":
+        n = len(payload.get("matches", []))
+        return f"{n} match(es) for '{args.get('query', '')}'"
+    if name == "read_card":
+        return f"{args.get('board','?')}/{args.get('list','?')}/{args.get('slug','?')}"
+    return ""
+
+
+def _queued_summary_fields(name: str, args: dict) -> dict:
+    """Fields to surface in a 'queued' event so the UI can show what's been proposed."""
+    if name == "create_card":
+        return {"board": args.get("board", ""), "list": args.get("list", ""),
+                "title": args.get("title", "")}
+    if name == "add_comment":
+        text = args.get("text", "")
+        return {"board": args.get("board", ""), "card": args.get("card", ""),
+                "text": text[:60]}
+    if name in ("tick_checklist", "add_checklist_item"):
+        return {"board": args.get("board", ""), "card": args.get("card", ""),
+                "item": args.get("item", "")}
+    if name == "move_card":
+        return {"board": args.get("board", ""), "card": args.get("card", ""),
+                "target_list": args.get("target_list", "")}
+    if name == "update_field":
+        return {"board": args.get("board", ""), "card": args.get("card", ""),
+                "field": args.get("field", "")}
+    return {}
+
+
+def analyze(body: str, title: str, *, model: str, client,
+            max_turns: int = MAX_TOOL_TURNS) -> dict:
+    """Non-streaming wrapper around analyze_stream.
+
+    Returns {"note_id": str, "summary": str, "operations": [...]}.
+    Raises LLMResponseError if the model produces no useful output.
+    """
+    last_done = None
+    for event in analyze_stream(body, title, model=model, client=client, max_turns=max_turns):
+        if event["type"] == "done":
+            last_done = event
+        elif event["type"] == "error":
+            raise LLMResponseError(event["message"])
+    if last_done is None:
+        raise LLMResponseError("analyze produced no result")
+    return {"note_id": last_done["note_id"], "summary": last_done["summary"],
+            "operations": last_done["operations"]}

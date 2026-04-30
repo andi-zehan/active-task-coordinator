@@ -8,7 +8,7 @@ import re
 import shutil
 import subprocess
 from datetime import datetime, date, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 import llm_config
@@ -692,6 +692,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             'overdue': [],
         }
         for card in all_cards:
+            if card.get('list') == 'done':
+                continue
             due = card.get('due', '')
             if not due:
                 result['someday'].append(card)
@@ -831,6 +833,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({'ok': False, 'error': str(e)})
 
     def _handle_notes_analyze(self):
+        """Stream the tool-use loop as Server-Sent Events.
+
+        Each significant step (turn, tool call, queued op, finish) is sent as
+        a separate SSE 'message' event whose data is a single JSON object.
+        The terminal event is either {type:'done', ...} or {type:'error', ...}.
+        """
         try:
             body = self._read_body()
         except json.JSONDecodeError:
@@ -844,11 +852,36 @@ class RequestHandler(BaseHTTPRequestHandler):
         except llm_config.NotConfigured:
             return self._send_error(400, 'LLM not configured')
         cfg = llm_config.load()
+
+        # Headers: text/event-stream, no caching, keep-alive open.
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        # Close after streaming so the client (urlopen / fetch) sees EOF.
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')  # disable proxy buffering
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
         try:
-            result = notes.analyze(text, title, model=cfg['model'], client=client)
-        except notes.LLMResponseError as e:
-            return self._send_error(502, str(e))
-        self._send_json(result)
+            for event in notes.analyze_stream(text, title,
+                                              model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return  # client disconnected; nothing to do
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def _handle_notes_apply(self):
         try:
@@ -924,6 +957,6 @@ if __name__ == '__main__':
 
     import threading
     threading.Thread(target=_periodic_janitor, daemon=True).start()
-    server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Kanban server running on http://localhost:8080")
     server.serve_forever()

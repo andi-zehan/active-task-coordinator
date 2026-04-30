@@ -35,6 +35,34 @@ def make_request_port(port, method, path, body=None):
         return e.code, json.loads(resp_body) if resp_body else {}
 
 
+def parse_sse_events(raw_text):
+    """Parse a Server-Sent Events stream into a list of {data: <json>} dicts."""
+    events = []
+    for block in raw_text.split('\n\n'):
+        data_lines = [l[5:].lstrip() for l in block.splitlines() if l.startswith('data:')]
+        if not data_lines:
+            continue
+        try:
+            events.append(json.loads('\n'.join(data_lines)))
+        except json.JSONDecodeError:
+            pass
+    return events
+
+
+def stream_analyze(port, body):
+    """POST /api/notes/analyze and return (status, [events], final_done_event_or_None)."""
+    url = f"http://localhost:{port}/api/notes/analyze"
+    req = urllib.request.Request(url, data=json.dumps(body).encode('utf-8'), method='POST')
+    req.add_header('Content-Type', 'application/json')
+    try:
+        resp = urllib.request.urlopen(req)
+        events = parse_sse_events(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return e.code, [], None
+    final = next((e for e in reversed(events) if e.get('type') == 'done'), None)
+    return resp.status, events, final
+
+
 class TestSlugify(unittest.TestCase):
     def test_simple(self):
         self.assertEqual(server.slugify("Hello World"), "hello-world")
@@ -418,6 +446,28 @@ class TestAggregationAPI(unittest.TestCase):
         self.assertEqual(len(data['overdue']), 1)
         self.assertEqual(data['overdue'][0]['title'], 'Overdue Card')
 
+    def test_dashboard_excludes_done_cards(self):
+        today_str = str(date.today())
+        past_str = str(date.today() - timedelta(days=2))
+        # Done card with today's due date — must not appear in 'today'.
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/done/cards', {
+                'title': 'Done Today Card', 'due': today_str})
+        # Done card with no due date — must not appear in 'someday'.
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/done/cards', {
+                'title': 'Done No-Due Card'})
+        # Done card overdue — must not appear in 'overdue'.
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/done/cards', {
+                'title': 'Done Overdue Card', 'due': past_str})
+        _, data = make_request_port(8091, 'GET', '/api/dashboard')
+        for bucket in ('today', 'this_week', 'next_week', 'later', 'someday', 'overdue'):
+            titles = [c['title'] for c in data[bucket]]
+            for t in titles:
+                self.assertFalse(t.startswith('Done '),
+                                 f"Done card '{t}' leaked into {bucket}")
+
     def test_calendar(self):
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/ideas/cards', {
@@ -568,19 +618,32 @@ class TestNotesEndpoints(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_analyze_returns_operations(self):
-        status, body = make_request_port(self.port, "POST", "/api/notes/analyze",
+        status, events, done = stream_analyze(self.port,
             {"text": "We agreed to do thing.", "title": "Q2"})
         self.assertEqual(status, 200)
-        self.assertEqual(body["summary"], "Talked about X.")
-        self.assertEqual(len(body["operations"]), 1)
-        self.assertTrue(body["note_id"].endswith("-q2"))
+        self.assertIsNotNone(done)
+        self.assertEqual(done["summary"], "Talked about X.")
+        self.assertEqual(len(done["operations"]), 1)
+        self.assertTrue(done["note_id"].endswith("-q2"))
+        # Stream included intermediate events.
+        types = [e["type"] for e in events]
+        self.assertEqual(types[0], "started")
+        self.assertIn("turn", types)
+        self.assertIn("queued", types)
+
+    def test_analyze_streams_sse_content_type(self):
+        url = f"http://localhost:{self.port}/api/notes/analyze"
+        req = urllib.request.Request(url,
+            data=json.dumps({"text": "x", "title": "T"}).encode('utf-8'), method='POST')
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req) as r:
+            self.assertIn("text/event-stream", r.headers.get("Content-Type", ""))
+            r.read()  # drain so the server thread can finish
 
     def test_get_note(self):
-        status, body = make_request_port(self.port, "POST", "/api/notes/analyze",
+        _, _, done = stream_analyze(self.port,
             {"text": "body content", "title": "Topic"})
-        note_id = body["note_id"]
-        # Use raw urlopen because get_note returns text/markdown not JSON
-        import urllib.request
+        note_id = done["note_id"]
         with urllib.request.urlopen(f"http://localhost:{self.port}/api/notes/{note_id}") as r:
             self.assertEqual(r.status, 200)
             self.assertIn("body content", r.read().decode("utf-8"))
@@ -594,10 +657,9 @@ class TestNotesEndpoints(unittest.TestCase):
             self.assertEqual(e.code, 404)
 
     def test_apply_creates_card(self):
-        _, body = make_request_port(self.port, "POST", "/api/notes/analyze",
-            {"text": "x", "title": "T"})
-        note_id = body["note_id"]
-        ops = body["operations"]
+        _, _, done = stream_analyze(self.port, {"text": "x", "title": "T"})
+        note_id = done["note_id"]
+        ops = done["operations"]
         status, result = make_request_port(self.port, "POST", "/api/notes/apply",
             {"note_id": note_id, "operations": ops})
         self.assertEqual(status, 200)
