@@ -658,5 +658,62 @@ class TestNotesEndpoints(unittest.TestCase):
         self.assertEqual(status, 200)
 
 
+class TestChatEndpoint(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
+
+        from tests._llm_fakes import FakeClient, FakeResponse, text_block
+        scripted = [
+            FakeResponse([text_block("hi from the model")]),
+        ]
+        import llm_config
+        self._orig_get_client = llm_config.get_client
+        llm_config.get_client = lambda: FakeClient(list(scripted))
+
+        self.server = HTTPServer(('127.0.0.1', 0), server.RequestHandler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join()
+        import llm_config
+        llm_config.get_client = self._orig_get_client
+        self.tmp.cleanup()
+
+    def test_chat_streams_sse_content_type(self):
+        url = f"http://localhost:{self.port}/api/chat"
+        body = {"messages": [{"role": "user", "content": "hi"}]}
+        req = urllib.request.Request(url,
+            data=json.dumps(body).encode('utf-8'), method='POST')
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req) as r:
+            self.assertIn("text/event-stream", r.headers.get("Content-Type", ""))
+            r.read()
+
+    def test_chat_returns_done_event(self):
+        url = f"http://localhost:{self.port}/api/chat"
+        body = {"messages": [{"role": "user", "content": "hi"}]}
+        req = urllib.request.Request(url,
+            data=json.dumps(body).encode('utf-8'), method='POST')
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req) as r:
+            events = parse_sse_events(r.read().decode('utf-8'))
+        self.assertEqual(events[0]["type"], "started")
+        self.assertEqual(events[-1]["type"], "done")
+        text = next(e for e in events if e["type"] == "text")
+        self.assertEqual(text["text"], "hi from the model")
+
+    def test_chat_rejects_empty_messages(self):
+        status, body = make_request_port(self.port, "POST", "/api/chat", {"messages": []})
+        self.assertEqual(status, 400)
+        self.assertIn("messages", body.get("error", ""))
+
+
 if __name__ == '__main__':
     unittest.main()

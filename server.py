@@ -435,6 +435,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/notes/analyze' and method == 'POST':
             return self._handle_notes_analyze()
 
+        # /api/chat
+        if path == '/api/chat' and method == 'POST':
+            return self._handle_chat()
+
         # /api/notes/apply
         if path == '/api/notes/apply' and method == 'POST':
             return self._handle_notes_apply()
@@ -885,6 +889,49 @@ class RequestHandler(BaseHTTPRequestHandler):
                 emit(event)
         except (BrokenPipeError, ConnectionResetError):
             return  # client disconnected; nothing to do
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_chat(self):
+        """Stream the chat tool-use loop as Server-Sent Events."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        messages = body.get('messages', [])
+        if not isinstance(messages, list) or not messages:
+            return self._send_error(400, 'messages list required')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            import chat
+            for event in chat.chat_stream(messages, model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
         except Exception as e:
             try:
                 emit({"type": "error", "message": str(e)})
