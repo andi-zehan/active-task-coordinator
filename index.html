@@ -682,6 +682,123 @@ a { color: #0052cc; text-decoration: none; }
   }
 }
 
+/* ── Chat sidebar ─────────────────────────────────────────────── */
+#chat-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 380px;
+  height: 100vh;
+  background: #fff;
+  border-left: 1px solid #dfe1e6;
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.06);
+}
+#chat-sidebar[hidden] { display: none; }
+body.chat-open { padding-right: 380px; }
+.chat-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #dfe1e6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.chat-icon-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #5e6c84;
+  padding: 2px 6px;
+}
+.chat-icon-btn:hover { color: #172b4d; }
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-msg-user {
+  align-self: flex-end;
+  background: #0052cc;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 12px 12px 2px 12px;
+  max-width: 82%;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.chat-msg-assistant {
+  align-self: flex-start;
+  background: #f4f5f7;
+  color: #172b4d;
+  padding: 8px 12px;
+  border-radius: 12px 12px 12px 2px;
+  max-width: 88%;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-tool-line {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  color: #5e6c84;
+  margin: 2px 0;
+}
+.chat-status {
+  font-size: 11px;
+  color: #5e6c84;
+  font-style: italic;
+}
+.chat-error {
+  color: #bf2600;
+  background: #ffebe6;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.chat-ops-panel {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #dfe1e6;
+  border-radius: 6px;
+}
+.chat-ops-panel .panel-title {
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 6px;
+  color: #172b4d;
+}
+.chat-ops-panel.applied { background: #e3fcef; border-color: #abf5d1; }
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #dfe1e6;
+  align-items: flex-end;
+}
+#chat-input {
+  flex: 1;
+  resize: none;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  body.chat-open { padding-right: 320px; }
+  #chat-sidebar { width: 320px; }
+}
+
 /* ── Calendar View ────────────────────────────────────────────── */
 .calendar-view {
   padding: 16px 24px;
@@ -1145,6 +1262,7 @@ a { color: #0052cc; text-decoration: none; }
   </div>
   <button class="btn-new-card" id="btn-new-card">+ New Card</button>
   <button class="header-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
+  <button class="header-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
   <button class="header-btn" id="btn-settings" title="LLM settings">&#9881;</button>
   <button class="btn-sync" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
 </div>
@@ -1355,6 +1473,18 @@ a { color: #0052cc; text-decoration: none; }
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
+
+<aside id="chat-sidebar" hidden>
+  <div class="chat-header">
+    <span class="chat-title">Chat</span>
+    <button id="btn-chat-clear" class="chat-icon-btn" title="Clear conversation">&#128465;</button>
+  </div>
+  <div id="chat-messages" class="chat-messages"></div>
+  <div class="chat-input-row">
+    <textarea id="chat-input" rows="2" placeholder="Ask anything…"></textarea>
+    <button id="btn-chat-send" class="btn-new-card">Send</button>
+  </div>
+</aside>
 
 <script>
 /* ================================================================
@@ -3177,6 +3307,346 @@ async function refreshNotesButtonState() {
     btn.disabled = true;
   }
 }
+
+/* ================================================================
+   Chat Sidebar — toggle, clear, state
+   ================================================================ */
+const CHAT_OPEN_KEY = 'atc-chat-open';
+const chatState = {
+  messages: [],            // Anthropic message history (sent on every turn)
+  pendingByTurn: {},       // turnIndex → list of unapplied ops
+  pendingApplyNote: '',    // prefix to prepend to next user message
+  inflight: false,         // true while a /api/chat request is open
+  turnCounter: 0,          // increments per outgoing user message
+};
+
+function setChatOpen(open) {
+  const sidebar = document.getElementById('chat-sidebar');
+  if (open) {
+    sidebar.hidden = false;
+    document.body.classList.add('chat-open');
+  } else {
+    sidebar.hidden = true;
+    document.body.classList.remove('chat-open');
+  }
+  localStorage.setItem(CHAT_OPEN_KEY, open ? '1' : '0');
+}
+
+function toggleChat() {
+  const isOpen = !document.getElementById('chat-sidebar').hidden;
+  setChatOpen(!isOpen);
+}
+
+function clearChat() {
+  chatState.messages = [];
+  chatState.pendingByTurn = {};
+  chatState.pendingApplyNote = '';
+  chatState.turnCounter = 0;
+  document.getElementById('chat-messages').innerHTML = '';
+}
+
+document.getElementById('btn-chat-toggle').addEventListener('click', toggleChat);
+document.getElementById('btn-chat-clear').addEventListener('click', () => {
+  if (chatState.messages.length === 0 || confirm('Clear conversation?')) {
+    clearChat();
+  }
+});
+
+if (localStorage.getItem(CHAT_OPEN_KEY) === '1') {
+  setChatOpen(true);
+}
+
+/* ================================================================
+   Chat Sidebar — streaming, render, send
+   ================================================================ */
+
+async function streamChat(messages, onEvent) {
+  const r = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({ messages }),
+  });
+  if (!r.ok) {
+    let detail = '';
+    try { const j = await r.json(); detail = j.error || ''; } catch {}
+    throw new Error(detail || `POST /api/chat: ${r.status}`);
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let last = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const dataLines = block.split('\n')
+        .filter(l => l.startsWith('data:'))
+        .map(l => l.slice(5).trimStart());
+      if (!dataLines.length) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLines.join('\n')); } catch { continue; }
+      onEvent(parsed);
+      if (parsed.type === 'done') last = parsed;
+      if (parsed.type === 'error') throw new Error(parsed.message || 'chat error');
+    }
+  }
+  return last;
+}
+
+function scrollChatToBottom() {
+  const el = document.getElementById('chat-messages');
+  el.scrollTop = el.scrollHeight;
+}
+
+function renderUserMessage(text) {
+  const el = document.createElement('div');
+  el.className = 'chat-msg-user';
+  el.textContent = text;
+  document.getElementById('chat-messages').appendChild(el);
+  scrollChatToBottom();
+}
+
+function renderAssistantBubble() {
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-msg-assistant';
+  wrap.innerHTML = `
+    <div class="chat-status">Thinking…</div>
+    <div class="chat-tools"></div>
+    <div class="chat-text"></div>
+    <div class="chat-ops"></div>
+  `;
+  document.getElementById('chat-messages').appendChild(wrap);
+  scrollChatToBottom();
+  return wrap;
+}
+
+function setBubbleStatus(bubble, text) {
+  const s = bubble.querySelector('.chat-status');
+  if (s) s.textContent = text;
+}
+function clearBubbleStatus(bubble) {
+  const s = bubble.querySelector('.chat-status');
+  if (s) s.remove();
+}
+
+function appendToolLine(bubble, name, args) {
+  const tools = bubble.querySelector('.chat-tools');
+  const line = document.createElement('div');
+  line.className = 'chat-tool-line';
+  const argsStr = Object.keys(args || {}).length ? ' ' + JSON.stringify(args) : '';
+  line.textContent = `→ ${name}${argsStr}`;
+  tools.appendChild(line);
+  scrollChatToBottom();
+  return line;
+}
+function appendToolResultSummary(toolLine, summary) {
+  if (toolLine && summary) toolLine.textContent += `  ${summary}`;
+}
+
+function appendAssistantText(bubble, text) {
+  const prose = bubble.querySelector('.chat-text');
+  if (prose.textContent) prose.textContent += '\n\n';
+  prose.textContent += text;
+  scrollChatToBottom();
+}
+
+function appendErrorLine(bubble, message) {
+  const err = document.createElement('div');
+  err.className = 'chat-error';
+  err.textContent = message;
+  bubble.appendChild(err);
+  scrollChatToBottom();
+}
+
+/* ---- Proposed-ops panel (per-turn, inside the assistant bubble) ---- */
+
+function renderOpsRows(ops, container) {
+  container.innerHTML = '';
+  if (!ops.length) {
+    container.innerHTML = '<p style="color:#5e6c84;font-size:13px;">No operations proposed.</p>';
+    return;
+  }
+  ops.forEach((op, i) => {
+    const div = document.createElement('div');
+    div.className = 'op-row';
+    const checked = op.confidence !== 'low' ? 'checked' : '';
+    const target = op.card
+      ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
+      : `${op.board || ''} / ${op.list || ''}`;
+    const summary = op.op === 'create_card' ? `"${escHtml(op.title || '')}"`
+      : op.op === 'add_comment' ? `"${escHtml((op.text || '').slice(0, 80))}"`
+      : op.op === 'tick_checklist' ? `tick "${escHtml(op.item || '')}"`
+      : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
+      : op.op === 'move_card' ? `→ ${escHtml(op.target_list || '')}`
+      : op.op === 'update_field' ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
+      : '';
+    div.innerHTML = `
+      <label>
+        <input type="checkbox" data-i="${i}" ${checked} />
+        <strong>${escHtml(op.op || '')}</strong>
+        <span class="conf conf-${op.confidence || 'med'}">${escHtml(op.confidence || '')}</span>
+        <span class="target">${escHtml(target)}</span>
+        <span class="summary">${summary}</span>
+        <div class="reason">${escHtml(op.reason || '')}</div>
+      </label>`;
+    container.appendChild(div);
+  });
+}
+
+function renderOpsPanelForTurn(bubble, turnIndex) {
+  const ops = chatState.pendingByTurn[turnIndex] || [];
+  let panel = bubble.querySelector('.chat-ops-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'chat-ops-panel';
+    panel.innerHTML = `
+      <div class="panel-title">Proposed changes (<span class="chat-ops-count">0</span>)</div>
+      <div class="chat-ops-rows"></div>
+      <button class="chat-ops-apply btn-new-card" style="margin-top:6px;">Apply selected</button>
+    `;
+    bubble.querySelector('.chat-ops').appendChild(panel);
+    panel.querySelector('.chat-ops-apply').addEventListener('click', () => {
+      applyOpsForTurn(bubble, turnIndex);
+    });
+  }
+  panel.querySelector('.chat-ops-count').textContent = ops.length;
+  renderOpsRows(ops, panel.querySelector('.chat-ops-rows'));
+}
+
+function describeAppliedOp(applied) {
+  return `${applied.op} ${applied.target}`;
+}
+
+async function applyOpsForTurn(bubble, turnIndex) {
+  const panel = bubble.querySelector('.chat-ops-panel');
+  if (!panel) return;
+  const allOps = chatState.pendingByTurn[turnIndex] || [];
+  const checks = panel.querySelectorAll('input[type=checkbox]');
+  const selected = [];
+  checks.forEach(c => { if (c.checked) selected.push(allOps[parseInt(c.dataset.i)]); });
+  if (!selected.length) return;
+
+  const applyBtn = panel.querySelector('.chat-ops-apply');
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Applying…';
+
+  let result;
+  try {
+    result = await api.post('/api/notes/apply', {
+      note_id: null,
+      operations: selected,
+    });
+  } catch (err) {
+    applyBtn.disabled = false;
+    applyBtn.textContent = 'Apply selected';
+    appendErrorLine(bubble, 'Apply failed: ' + err.message);
+    return;
+  }
+
+  const applied = result.applied || [];
+  const skipped = result.skipped || [];
+
+  panel.classList.add('applied');
+  panel.querySelector('.chat-ops-rows').innerHTML =
+    `<div style="font-size:12px;color:#172b4d;">✓ Applied ${applied.length} of ${selected.length}` +
+    (skipped.length ? ` — ${skipped.length} skipped` : '') + `</div>` +
+    (skipped.length ? `<ul style="font-size:12px;color:#bf2600;margin:4px 0 0 14px;">` +
+       skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('') +
+       `</ul>` : '');
+  applyBtn.remove();
+
+  if (applied.length) {
+    const summaries = applied.map(a => describeAppliedOp(a)).join('; ');
+    const note = `(Applied: ${summaries})`;
+    chatState.pendingApplyNote = chatState.pendingApplyNote
+      ? chatState.pendingApplyNote + ' ' + note
+      : note;
+  }
+
+  delete chatState.pendingByTurn[turnIndex];
+
+  if (typeof refreshCurrentView === 'function') refreshCurrentView();
+}
+
+/* ---- Send ---- */
+
+async function sendChatMessage() {
+  if (chatState.inflight) return;
+  const inputEl = document.getElementById('chat-input');
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  let outgoing = text;
+  if (chatState.pendingApplyNote) {
+    outgoing = chatState.pendingApplyNote.trim() + '\n\n' + text;
+    chatState.pendingApplyNote = '';
+  }
+
+  chatState.turnCounter += 1;
+  const turnIndex = chatState.turnCounter;
+
+  renderUserMessage(text);
+  inputEl.value = '';
+  chatState.messages.push({ role: 'user', content: outgoing });
+
+  const bubble = renderAssistantBubble();
+  bubble.dataset.turnIndex = String(turnIndex);
+  chatState.inflight = true;
+  document.getElementById('btn-chat-send').disabled = true;
+
+  let lastToolLine = null;
+
+  try {
+    const done = await streamChat(chatState.messages, (ev) => {
+      switch (ev.type) {
+        case 'started':
+          setBubbleStatus(bubble, 'Working…');
+          break;
+        case 'turn':
+          setBubbleStatus(bubble, `Turn ${ev.n}…`);
+          break;
+        case 'tool':
+          lastToolLine = appendToolLine(bubble, ev.name, ev.args);
+          break;
+        case 'result':
+          appendToolResultSummary(lastToolLine, ev.summary);
+          break;
+        case 'queued':
+          if (!chatState.pendingByTurn[turnIndex]) chatState.pendingByTurn[turnIndex] = [];
+          chatState.pendingByTurn[turnIndex].push(ev);
+          renderOpsPanelForTurn(bubble, turnIndex);
+          break;
+        case 'text':
+          appendAssistantText(bubble, ev.text);
+          break;
+        case 'done':
+          clearBubbleStatus(bubble);
+          break;
+      }
+    });
+    if (done && Array.isArray(done.messages_appended)) {
+      chatState.messages.push(...done.messages_appended);
+    }
+  } catch (err) {
+    appendErrorLine(bubble, err.message);
+  } finally {
+    chatState.inflight = false;
+    document.getElementById('btn-chat-send').disabled = false;
+    inputEl.focus();
+  }
+}
+
+document.getElementById('btn-chat-send').addEventListener('click', sendChatMessage);
+document.getElementById('chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});
 
 /* ================================================================
    Process Notes wizard
