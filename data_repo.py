@@ -105,6 +105,51 @@ def git_sync_push() -> dict:
         return {"status": "error", "message": str(e)}
 
 
+def reconcile_repo_state(cfg: dict) -> dict:
+    """Make data/ match the configured mode. No network calls.
+
+    Off:    ensure data/ exists, no git commands.
+    Local:  ensure data/ is a git repo (init if missing). Don't touch remotes.
+    Remote: ensure data/ is a git repo, ensure origin matches cfg.remote_url.
+    """
+    mode = cfg["mode"]
+    branch = cfg["branch"]
+    if mode == "off":
+        _ensure_plain_data_dir()
+        return {"status": "ok", "message": "data/ ready (mode=off)"}
+    try:
+        if not (DATA_DIR / ".git").exists():
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            r = subprocess.run(
+                ["git", "init", "-b", branch], cwd=DATA_DIR,
+                capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+            )
+            if r.returncode != 0:
+                return {"status": "error", "message": f"git init failed: {r.stderr.strip()}"}
+        if mode == "remote":
+            current = _origin_url()
+            target = cfg["remote_url"]
+            if not current:
+                r = subprocess.run(
+                    ["git", "remote", "add", "origin", target], cwd=DATA_DIR,
+                    capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+                )
+                if r.returncode != 0:
+                    return {"status": "error",
+                            "message": f"git remote add failed: {r.stderr.strip()}"}
+            elif current != target:
+                r = subprocess.run(
+                    ["git", "remote", "set-url", "origin", target], cwd=DATA_DIR,
+                    capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+                )
+                if r.returncode != 0:
+                    return {"status": "error",
+                            "message": f"git remote set-url failed: {r.stderr.strip()}"}
+        return {"status": "ok", "message": f"data/ ready (mode={mode})"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 def git_sync_pull() -> dict:
     """Mode-aware pull. In remote mode, clones if data/ is empty, else pulls."""
     cfg = sync_config.load()
