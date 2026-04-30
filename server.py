@@ -14,10 +14,14 @@ from urllib.parse import urlparse, parse_qs
 import llm_config
 import notes
 import janitor
+import sync_config
+import data_repo
 
 DATA_DIR = Path(__file__).parent / "data"
 LISTS = ["ideas", "backlog", "in-progress", "done"]
-DATA_REPO_URL = os.environ.get('ATC_DATA_REPO_URL', 'https://github.com/andi-zehan/atc-content.git')
+DATA_REPO_URL_FALLBACK = os.environ.get('ATC_DATA_REPO_URL', 'https://github.com/andi-zehan/atc-content.git')
+
+data_repo.set_data_dir(DATA_DIR)
 
 
 def slugify(title):
@@ -738,21 +742,21 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(results)
 
     def _handle_sync_push(self):
-        result = git_sync_push()
-        self._send_json(result)
+        self._send_json(data_repo.git_sync_push())
 
     def _handle_sync_pull(self):
-        result = git_sync_pull()
-        self._send_json(result)
+        self._send_json(data_repo.git_sync_pull())
 
     def _handle_sync_status(self):
-        if not (DATA_DIR / '.git').exists():
-            return self._send_json({'dirty': False})
+        cfg = sync_config.load()
+        if cfg["mode"] == "off" or not (DATA_DIR / '.git').exists():
+            return self._send_json({'dirty': False, 'mode': cfg["mode"]})
         try:
-            r = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=DATA_DIR)
-            self._send_json({'dirty': bool(r.stdout.strip())})
+            r = subprocess.run(['git', 'status', '--porcelain'],
+                               capture_output=True, text=True, cwd=DATA_DIR, timeout=10)
+            self._send_json({'dirty': bool(r.stdout.strip()), 'mode': cfg["mode"]})
         except Exception:
-            self._send_json({'dirty': False})
+            self._send_json({'dirty': False, 'mode': cfg["mode"]})
 
     def _handle_get_llm_config(self):
         self._send_json(llm_config.public_view())
@@ -835,92 +839,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(result)
 
 
-def _is_empty_placeholder_data_dir():
-    if not DATA_DIR.exists():
-        return True
-    if (DATA_DIR / '.git').exists():
-        return False
-
-    files = [p for p in DATA_DIR.rglob('*') if p.is_file() and p.name != '.DS_Store']
-    if not files:
-        return True
-    if len(files) == 1 and files[0].relative_to(DATA_DIR).as_posix() == '_boards-order.json':
-        try:
-            return read_json(files[0]) == []
-        except Exception:
-            return False
-    return False
-
-
-def ensure_data_repo():
-    if (DATA_DIR / '.git').exists():
-        return {'status': 'ok', 'message': 'Data repository exists'}
-    if not _is_empty_placeholder_data_dir():
-        return {
-            'status': 'error',
-            'message': 'data/ exists but is not a git repository. Move it aside before syncing.'
-        }
-    if DATA_DIR.exists():
-        shutil.rmtree(DATA_DIR)
-    r = subprocess.run(['git', 'clone', DATA_REPO_URL, str(DATA_DIR)],
-                       capture_output=True, text=True, cwd=DATA_DIR.parent)
-    if r.returncode != 0:
-        return {'status': 'error', 'message': f'Clone failed: {r.stderr.strip()}'}
-    return {'status': 'ok', 'message': f'Cloned data repository from {DATA_REPO_URL}'}
-
-
-def _has_git_remote():
-    try:
-        r = subprocess.run(['git', 'remote'], capture_output=True, text=True, cwd=DATA_DIR)
-        return bool(r.stdout.strip())
-    except Exception:
-        return False
-
-
-def git_sync_push():
-    if not (DATA_DIR / '.git').exists():
-        return {'status': 'error', 'message': 'Data directory is not a git repository'}
-    try:
-        subprocess.run(['git', 'add', '-A'], cwd=DATA_DIR, capture_output=True, text=True)
-        status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True, cwd=DATA_DIR)
-        if not status.stdout.strip():
-            return {'status': 'no-changes', 'message': 'Nothing to sync'}
-        hostname = platform.node()
-        ts = datetime.now().strftime('%Y-%m-%d %H:%M')
-        msg = f"sync from {hostname} at {ts}"
-        subprocess.run(['git', 'commit', '-m', msg], cwd=DATA_DIR, capture_output=True, text=True)
-        if _has_git_remote():
-            r = subprocess.run(['git', 'push', 'origin', 'main'], cwd=DATA_DIR, capture_output=True, text=True)
-            if r.returncode != 0:
-                r = subprocess.run(['git', 'push', 'origin', 'master'], cwd=DATA_DIR, capture_output=True, text=True)
-                if r.returncode != 0:
-                    return {'status': 'error', 'message': f'Push failed: {r.stderr.strip()}'}
-        return {'status': 'ok', 'message': msg}
-    except Exception as e:
-        return {'status': 'error', 'message': str(e)}
-
-
-def git_sync_pull():
-    repo = ensure_data_repo()
-    if repo['status'] != 'ok':
-        return repo
-    if repo['message'].startswith('Cloned data repository'):
-        return repo
-    if not _has_git_remote():
-        return {'status': 'skipped', 'message': 'No remote configured'}
-    try:
-        r = subprocess.run(['git', 'pull', 'origin', 'main'], cwd=DATA_DIR, capture_output=True, text=True)
-        if r.returncode != 0:
-            r = subprocess.run(['git', 'pull', 'origin', 'master'], cwd=DATA_DIR, capture_output=True, text=True)
-        if r.returncode != 0:
-            return {'status': 'error', 'message': f'Pull failed: {r.stderr.strip()}'}
-        return {'status': 'ok', 'message': r.stdout.strip()}
-    except Exception as e:
-        return {'status': 'error', 'message': str(e)}
-
-
 if __name__ == '__main__':
-    result = git_sync_pull()
+    result = data_repo.git_sync_pull()
     print(f"Data sync pull: {result['status']} — {result['message']}")
     ensure_data_dir()
     # Run janitor once on startup, then every 24 hours in a background thread
