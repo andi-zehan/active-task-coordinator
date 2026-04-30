@@ -375,6 +375,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/sync/status' and method == 'GET':
             return self._handle_sync_status()
 
+        # /api/sync/config
+        if path == '/api/sync/config' and method == 'GET':
+            return self._handle_get_sync_config()
+        if path == '/api/sync/config' and method == 'PUT':
+            return self._handle_put_sync_config()
+        if path == '/api/sync/test' and method == 'POST':
+            return self._handle_test_sync()
+
         # /api/llm-config
         if path == '/api/llm-config' and method == 'GET':
             return self._handle_get_llm_config()
@@ -757,6 +765,38 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._send_json({'dirty': bool(r.stdout.strip()), 'mode': cfg["mode"]})
         except Exception:
             self._send_json({'dirty': False, 'mode': cfg["mode"]})
+
+    def _handle_get_sync_config(self):
+        cfg = sync_config.public_view()
+        cfg["git_status"] = data_repo.git_status_summary()
+        self._send_json(cfg)
+
+    def _handle_put_sync_config(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        if not isinstance(body, dict):
+            return self._send_error(400, 'expected object')
+        updates = sync_config.sanitize_user_updates(body)
+        new_cfg = {**sync_config.load(), **updates}
+        try:
+            sync_config.validate(new_cfg)
+        except sync_config.ValidationError as e:
+            return self._send_error(400, str(e))
+        old_cfg = sync_config.load()
+        data_repo_existed = (DATA_DIR / '.git').exists()
+        sync_config.save(updates)
+        if sync_config.transition_sets_skip_pull(old_cfg, new_cfg, data_repo_existed):
+            sync_config.set_skip_next_pull(True)
+        reconcile = data_repo.reconcile_repo_state(sync_config.load())
+        response = sync_config.public_view()
+        response["git_status"] = data_repo.git_status_summary()
+        response["reconcile"] = reconcile
+        self._send_json(response)
+
+    def _handle_test_sync(self):
+        self._send_json(data_repo.git_test())
 
     def _handle_get_llm_config(self):
         self._send_json(llm_config.public_view())
