@@ -445,6 +445,25 @@ class TestApply(unittest.TestCase):
         # No source-note attachment when note_id is None.
         self.assertEqual(card.get("attachments") or [], [])
 
+    def test_apply_move_then_update_follows_card(self):
+        # Regression: when a batch moves a card and then updates it, the
+        # update used to look at the card's OLD location and skip.
+        make_card(self.data_dir, "alpha", "backlog", "task",
+                  "---\ntitle: T\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
+                  "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        ops = [
+            {"op": "move_card", "board": "alpha", "list": "backlog",
+             "card": "task", "target_list": "ideas"},
+            {"op": "update_field", "board": "alpha", "list": "backlog",
+             "card": "task", "field": "assignee", "value": "Andi"},
+        ]
+        result = notes.apply_operations(ops, None)
+        self.assertEqual(len(result["applied"]), 2, msg=str(result))
+        self.assertEqual(result["skipped"], [])
+        moved = server.read_card("alpha", "ideas", "task")
+        self.assertIsNotNone(moved)
+        self.assertEqual(moved["assignee"], "Andi")
+
     def test_apply_with_no_note_id_skips_comment_link(self):
         # Pre-create a card to comment on.
         make_card(self.data_dir, "alpha", "backlog", "target",

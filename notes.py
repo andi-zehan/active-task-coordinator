@@ -354,19 +354,45 @@ def _record_in_note(note_id: str, op: dict, target: str) -> None:
 
 
 def apply_operations(operations: list[dict], note_id: str) -> dict:
-    """Run each operation. Skip ones whose target is gone. Always continue."""
+    """Run each operation. Skip ones whose target is gone. Always continue.
+
+    When an op moves a card, subsequent ops in the same batch that reference
+    that card by its *old* (board, list, slug) get rewritten to follow it.
+    Otherwise a "move A then assign A" pair would skip the assign because
+    the card is no longer at the old list when assign runs.
+    """
     applied = []
     skipped = []
+    # (board, list, card) → (board, list, card) after a prior move
+    relocated: dict = {}
+
+    def follow(op: dict) -> dict:
+        if "card" not in op:
+            return op
+        key = (op.get("board"), op.get("list"), op.get("card"))
+        if key not in relocated:
+            return op
+        new_b, new_l, new_c = relocated[key]
+        op = dict(op)
+        op["board"], op["list"], op["card"] = new_b, new_l, new_c
+        return op
+
     for op in operations:
         handler = _HANDLERS.get(op.get("op"))
         if handler is None:
             skipped.append({"op": op, "reason": f"unknown op '{op.get('op')}'"})
             continue
+        op = follow(op)
         try:
             outcome = handler(op, note_id)
             applied.append({"op": op["op"], "target": outcome["target"]})
             if note_id:
                 _record_in_note(note_id, op, outcome["target"])
+            if op["op"] == "move_card":
+                # Record the relocation so later ops in this batch follow.
+                parts = outcome["target"].split("/", 2)
+                if len(parts) == 3:
+                    relocated[(op["board"], op["list"], op["card"])] = tuple(parts)
         except (ValueError, KeyError, FileNotFoundError) as e:
             skipped.append({"op": op, "reason": str(e)})
     return {"applied": applied, "skipped": skipped}
