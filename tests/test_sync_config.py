@@ -78,5 +78,68 @@ class TestValidation(unittest.TestCase):
             sync_config.validate({"mode": "local", "remote_url": "", "branch": ""})
 
 
+class TestTransitionSkipPull(unittest.TestCase):
+    """skip_next_pull is set when the new config makes an auto-pull risky."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        sync_config.CONFIG_PATH = Path(self.tmp.name) / ".sync-config.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_local_to_remote_sets_skip(self):
+        old = {"mode": "local", "remote_url": "", "branch": "main"}
+        new = {"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"}
+        self.assertTrue(sync_config.transition_sets_skip_pull(old, new, data_repo_exists=True))
+
+    def test_off_to_remote_with_existing_repo_sets_skip(self):
+        old = {"mode": "off", "remote_url": "", "branch": "main"}
+        new = {"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"}
+        self.assertTrue(sync_config.transition_sets_skip_pull(old, new, data_repo_exists=True))
+
+    def test_off_to_remote_with_no_repo_does_not_set_skip(self):
+        old = {"mode": "off", "remote_url": "", "branch": "main"}
+        new = {"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"}
+        self.assertFalse(sync_config.transition_sets_skip_pull(old, new, data_repo_exists=False))
+
+    def test_remote_url_change_sets_skip(self):
+        old = {"mode": "remote", "remote_url": "https://a/x.git", "branch": "main"}
+        new = {"mode": "remote", "remote_url": "https://b/y.git", "branch": "main"}
+        self.assertTrue(sync_config.transition_sets_skip_pull(old, new, data_repo_exists=True))
+
+    def test_no_change_does_not_set_skip(self):
+        cfg = {"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"}
+        self.assertFalse(sync_config.transition_sets_skip_pull(cfg, cfg, data_repo_exists=True))
+
+    def test_remote_to_local_does_not_set_skip(self):
+        old = {"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"}
+        new = {"mode": "local", "remote_url": "https://x/y.git", "branch": "main"}
+        self.assertFalse(sync_config.transition_sets_skip_pull(old, new, data_repo_exists=True))
+
+    def test_clear_skip_next_pull(self):
+        sync_config.save({"mode": "remote", "remote_url": "https://x/y.git", "branch": "main"})
+        sync_config.set_skip_next_pull(True)
+        self.assertTrue(sync_config.load()["skip_next_pull"])
+        sync_config.set_skip_next_pull(False)
+        self.assertFalse(sync_config.load()["skip_next_pull"])
+
+
+class TestSkipPullNotUserWritable(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        sync_config.CONFIG_PATH = Path(self.tmp.name) / ".sync-config.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_save_filters_skip_next_pull_when_not_in_user_writable(self):
+        sanitized = sync_config.sanitize_user_updates(
+            {"mode": "local", "branch": "main", "skip_next_pull": True, "remote_url": ""}
+        )
+        self.assertNotIn("skip_next_pull", sanitized)
+        self.assertEqual(sanitized["mode"], "local")
+
+
 if __name__ == "__main__":
     unittest.main()

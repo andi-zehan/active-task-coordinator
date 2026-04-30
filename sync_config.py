@@ -80,3 +80,34 @@ def validate(updates: dict) -> None:
         url = updates.get("remote_url", "")
         if not isinstance(url, str) or not url.strip():
             raise ValidationError("remote_url is required when mode is 'remote'")
+
+
+def transition_sets_skip_pull(old: dict, new: dict, data_repo_exists: bool) -> bool:
+    """Decide whether the next startup auto-pull should be suppressed.
+
+    The auto-pull is suppressed when:
+      * mode flips from 'local' -> 'remote' (local commits may be ahead of origin)
+      * mode flips from 'off' -> 'remote' AND data/ already has a repo
+      * remote_url changes while staying in 'remote' (new origin may be empty/diverged)
+    """
+    old_mode, new_mode = old.get("mode"), new.get("mode")
+    if new_mode != "remote":
+        return False
+    if old_mode == "local":
+        return True
+    if old_mode == "off" and data_repo_exists:
+        return True
+    if old_mode == "remote" and old.get("remote_url") != new.get("remote_url"):
+        return True
+    return False
+
+
+def set_skip_next_pull(value: bool) -> None:
+    cfg = load()
+    cfg["skip_next_pull"] = bool(value)
+    _write(cfg)
+
+
+def sanitize_user_updates(updates: dict) -> dict:
+    """Drop keys the user is not allowed to write directly."""
+    return {k: v for k, v in updates.items() if k in USER_WRITABLE_KEYS}
