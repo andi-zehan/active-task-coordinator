@@ -111,6 +111,39 @@ READ_TOOL_DEFS = [
             "required": ["board", "list", "slug"],
         },
     },
+    {
+        "name": "list_overdue",
+        "description": "List all overdue cards (due date in the past, not in 'done' list). Returns board, list, slug, title, due, assignee, labels.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "list_due_today",
+        "description": "List all cards due today (not in 'done' list).",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "list_due_this_week",
+        "description": "List all cards due this week (today is excluded — use list_due_today for that). Excludes 'done' list.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "find_by_label",
+        "description": "Find all cards with a given label (exact match, case-insensitive). Excludes 'done' list.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"label": {"type": "string"}},
+            "required": ["label"],
+        },
+    },
+    {
+        "name": "find_by_assignee",
+        "description": "Find all cards assigned to the given person (exact match, case-insensitive). Excludes 'done' list.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
 ]
 
 # --- Write-tool definitions ---
@@ -297,6 +330,81 @@ def _tool_read_card(args: dict) -> dict:
     }
 
 
+# --- Bucket / filter read-tool implementations ---
+
+def _all_cards_with_path() -> list[dict]:
+    """Return every card (full record incl. board/list/slug) across all boards."""
+    import server
+    out = []
+    boards_order_path = server.DATA_DIR / "_boards-order.json"
+    if not boards_order_path.exists():
+        return out
+    for board in json.loads(boards_order_path.read_text(encoding="utf-8")):
+        for list_slug in server.LISTS:
+            order = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+            if not order.exists():
+                continue
+            for slug in json.loads(order.read_text(encoding="utf-8")):
+                card = server.read_card(board, list_slug, slug)
+                if card is None:
+                    continue
+                out.append(card)
+    return out
+
+
+def _summarize_card_for_chat(card: dict) -> dict:
+    return {
+        "b": card.get("board"),
+        "l": card.get("list"),
+        "s": card.get("slug"),
+        "title": card.get("title", ""),
+        "due": card.get("due", ""),
+        "assignee": card.get("assignee", ""),
+        "labels": card.get("labels") or [],
+    }
+
+
+def _bucketed_card_summaries(bucket_name: str) -> list[dict]:
+    import server
+    buckets = server.bucket_cards_by_due(_all_cards_with_path())
+    return [_summarize_card_for_chat(c) for c in buckets.get(bucket_name, [])]
+
+
+def _tool_list_overdue(_args: dict) -> dict:
+    return {"cards": _bucketed_card_summaries("overdue")}
+
+
+def _tool_list_due_today(_args: dict) -> dict:
+    return {"cards": _bucketed_card_summaries("today")}
+
+
+def _tool_list_due_this_week(_args: dict) -> dict:
+    return {"cards": _bucketed_card_summaries("this_week")}
+
+
+def _tool_find_by_label(args: dict) -> dict:
+    target = args["label"].strip().lower()
+    out = []
+    for card in _all_cards_with_path():
+        if card.get("list") == "done":
+            continue
+        labels = [str(l).lower() for l in (card.get("labels") or [])]
+        if target in labels:
+            out.append(_summarize_card_for_chat(card))
+    return {"cards": out}
+
+
+def _tool_find_by_assignee(args: dict) -> dict:
+    target = args["name"].strip().lower()
+    out = []
+    for card in _all_cards_with_path():
+        if card.get("list") == "done":
+            continue
+        if (card.get("assignee") or "").strip().lower() == target:
+            out.append(_summarize_card_for_chat(card))
+    return {"cards": out}
+
+
 # --- Write-tool dispatch (queues, doesn't execute) ---
 
 _WRITE_OP_NAMES = {
@@ -316,6 +424,11 @@ READ_TOOLS = {
     "list_cards": _tool_list_cards,
     "search_cards": _tool_search_cards,
     "read_card": _tool_read_card,
+    "list_overdue": _tool_list_overdue,
+    "list_due_today": _tool_list_due_today,
+    "list_due_this_week": _tool_list_due_this_week,
+    "find_by_label": _tool_find_by_label,
+    "find_by_assignee": _tool_find_by_assignee,
 }
 
 
@@ -339,6 +452,15 @@ def _summarize_read_result(name: str, args: dict, payload: dict) -> str:
         return f"{n} match(es) for '{args.get('query', '')}'"
     if name == "read_card":
         return f"{args.get('board','?')}/{args.get('list','?')}/{args.get('slug','?')}"
+    if name in ("list_overdue", "list_due_today", "list_due_this_week"):
+        n = len(payload.get("cards", []))
+        return f"{n} card(s)"
+    if name == "find_by_label":
+        n = len(payload.get("cards", []))
+        return f"{n} card(s) with label '{args.get('label', '')}'"
+    if name == "find_by_assignee":
+        n = len(payload.get("cards", []))
+        return f"{n} card(s) assigned to '{args.get('name', '')}'"
     return ""
 
 

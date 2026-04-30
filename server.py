@@ -19,6 +19,46 @@ import data_repo
 
 DATA_DIR = Path(__file__).parent / "data"
 LISTS = ["ideas", "backlog", "in-progress", "done"]
+
+
+def bucket_cards_by_due(cards, today=None):
+    """Group cards into dashboard buckets by their due date.
+
+    Cards in the 'done' list are skipped entirely.
+
+    Returns: {today, this_week, next_week, later, someday, overdue}.
+    """
+    if today is None:
+        today = date.today()
+    week_end = today + timedelta(days=6 - today.weekday())
+    next_week_end = week_end + timedelta(days=7)
+    result = {
+        'today': [], 'this_week': [], 'next_week': [],
+        'later': [], 'someday': [], 'overdue': [],
+    }
+    for card in cards:
+        if card.get('list') == 'done':
+            continue
+        due = card.get('due', '')
+        if not due:
+            result['someday'].append(card)
+            continue
+        try:
+            due_date = date.fromisoformat(due)
+        except (ValueError, TypeError):
+            result['someday'].append(card)
+            continue
+        if due_date == today:
+            result['today'].append(card)
+        elif today < due_date <= week_end:
+            result['this_week'].append(card)
+        elif week_end < due_date <= next_week_end:
+            result['next_week'].append(card)
+        elif due_date > next_week_end:
+            result['later'].append(card)
+        elif due_date < today:
+            result['overdue'].append(card)
+    return result
 DATA_REPO_URL_FALLBACK = os.environ.get('ATC_DATA_REPO_URL', 'https://github.com/andi-zehan/atc-content.git')
 
 data_repo.set_data_dir(DATA_DIR)
@@ -679,40 +719,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         return cards
 
     def _handle_dashboard(self):
-        today_date = date.today()
-        week_end = today_date + timedelta(days=6 - today_date.weekday())
-        next_week_end = week_end + timedelta(days=7)
         all_cards = self._get_all_cards()
-        result = {
-            'today': [],
-            'this_week': [],
-            'next_week': [],
-            'later': [],
-            'someday': [],
-            'overdue': [],
-        }
-        for card in all_cards:
-            if card.get('list') == 'done':
-                continue
-            due = card.get('due', '')
-            if not due:
-                result['someday'].append(card)
-                continue
-            try:
-                due_date = date.fromisoformat(due)
-            except (ValueError, TypeError):
-                result['someday'].append(card)
-                continue
-            if due_date == today_date:
-                result['today'].append(card)
-            elif today_date < due_date <= week_end:
-                result['this_week'].append(card)
-            elif week_end < due_date <= next_week_end:
-                result['next_week'].append(card)
-            elif due_date > next_week_end:
-                result['later'].append(card)
-            elif due_date < today_date:
-                result['overdue'].append(card)
+        result = bucket_cards_by_due(all_cards)
         self._send_json(result)
 
     def _handle_calendar(self, year_str, month_str):
