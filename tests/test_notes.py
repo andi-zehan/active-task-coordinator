@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import server
 import notes
+import chat_tools
 
 
 def make_card(data_dir: Path, board: str, lst: str, slug: str, body: str = ""):
@@ -303,32 +304,32 @@ class TestReadTools(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_list_boards_returns_card_counts(self):
-        out = notes._tool_list_boards({})
+        out = chat_tools._tool_list_boards({})
         names = {b["slug"]: b for b in out["boards"]}
         self.assertEqual(names["alpha"]["card_count"], 1)
         self.assertEqual(names["beta"]["card_count"], 1)
 
     def test_list_cards_filters_by_list(self):
-        out = notes._tool_list_cards({"board": "alpha", "list": "backlog"})
+        out = chat_tools._tool_list_cards({"board": "alpha", "list": "backlog"})
         self.assertEqual(len(out["cards"]), 1)
         self.assertEqual(out["cards"][0]["s"], "draft-spec")
 
     def test_list_cards_unknown_board(self):
-        self.assertIn("error", notes._tool_list_cards({"board": "ghost"}))
+        self.assertIn("error", chat_tools._tool_list_cards({"board": "ghost"}))
 
     def test_search_cards_finds_substring(self):
-        out = notes._tool_search_cards({"query": "spec"})
+        out = chat_tools._tool_search_cards({"query": "spec"})
         slugs = [m["s"] for m in out["matches"]]
         self.assertIn("draft-spec", slugs)
 
     def test_read_card_returns_split_checklist(self):
-        out = notes._tool_read_card({"board": "alpha", "list": "backlog", "slug": "draft-spec"})
+        out = chat_tools._tool_read_card({"board": "alpha", "list": "backlog", "slug": "draft-spec"})
         self.assertIn("Outline", out["checklist_todo"])
         self.assertIn("Title", out["checklist_done"])
         self.assertEqual(out["title"], "Draft spec")
 
     def test_read_card_missing(self):
-        out = notes._tool_read_card({"board": "alpha", "list": "backlog", "slug": "nope"})
+        out = chat_tools._tool_read_card({"board": "alpha", "list": "backlog", "slug": "nope"})
         self.assertIn("error", out)
 
 
