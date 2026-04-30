@@ -150,6 +150,42 @@ def reconcile_repo_state(cfg: dict) -> dict:
         return {"status": "error", "message": str(e)}
 
 
+def git_test() -> dict:
+    """Quick connectivity check. Returns {ok, message}. No side effects."""
+    cfg = sync_config.load()
+    mode = cfg["mode"]
+    if mode == "off":
+        return {"ok": True, "message": "sync disabled"}
+    if mode == "local":
+        ok = (DATA_DIR / ".git").exists()
+        return {
+            "ok": ok,
+            "message": "local repo present" if ok else "data/ is not a git repository",
+        }
+    # remote mode
+    try:
+        r = subprocess.run(
+            ["git", "ls-remote", cfg["remote_url"]],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+        )
+        if r.returncode == 0:
+            return {"ok": True, "message": "remote reachable"}
+        return {"ok": False, "message": (r.stderr or r.stdout).strip() or "ls-remote failed"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "ls-remote timed out"}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+def git_status_summary() -> str:
+    """Returns one of: 'ok', 'no-repo', 'missing-remote'. Used by /api/sync/config."""
+    if not (DATA_DIR / ".git").exists():
+        return "no-repo"
+    if not _has_git_remote():
+        return "missing-remote"
+    return "ok"
+
+
 def git_sync_pull() -> dict:
     """Mode-aware pull. In remote mode, clones if data/ is empty, else pulls."""
     cfg = sync_config.load()

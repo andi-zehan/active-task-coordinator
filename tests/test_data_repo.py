@@ -78,5 +78,74 @@ class TestReconcile(unittest.TestCase):
         self.assertEqual(result["status"], "ok")  # success: only ran init + remote add
 
 
+class TestGitTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.data_dir = self.root / "data"
+        data_repo.set_data_dir(self.data_dir)
+        sync_config.CONFIG_PATH = self.root / ".sync-config.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_off_mode(self):
+        sync_config.save({"mode": "off", "remote_url": "", "branch": "main"})
+        result = data_repo.git_test()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["message"], "sync disabled")
+
+    def test_local_mode_no_repo(self):
+        sync_config.save({"mode": "local", "remote_url": "", "branch": "main"})
+        result = data_repo.git_test()
+        self.assertFalse(result["ok"])
+
+    def test_local_mode_with_repo(self):
+        sync_config.save({"mode": "local", "remote_url": "", "branch": "main"})
+        self.data_dir.mkdir()
+        _run_git(["init"], self.data_dir)
+        result = data_repo.git_test()
+        self.assertTrue(result["ok"])
+
+    def test_remote_mode_unreachable_url(self):
+        sync_config.save(
+            {"mode": "remote", "remote_url": "https://nonexistent.invalid/x.git", "branch": "main"}
+        )
+        result = data_repo.git_test()
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["message"])
+
+    def test_remote_mode_with_local_bare_remote(self):
+        bare = self.root / "bare.git"
+        _run_git(["init", "--bare", str(bare)], self.root)
+        sync_config.save({"mode": "remote", "remote_url": str(bare), "branch": "main"})
+        result = data_repo.git_test()
+        self.assertTrue(result["ok"], msg=result["message"])
+
+
+class TestGitStatusSummary(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        data_repo.set_data_dir(self.data_dir)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_no_repo(self):
+        self.assertEqual(data_repo.git_status_summary(), "no-repo")
+
+    def test_repo_no_remote(self):
+        self.data_dir.mkdir()
+        _run_git(["init"], self.data_dir)
+        self.assertEqual(data_repo.git_status_summary(), "missing-remote")
+
+    def test_repo_with_remote(self):
+        self.data_dir.mkdir()
+        _run_git(["init"], self.data_dir)
+        _run_git(["remote", "add", "origin", "https://x/y.git"], self.data_dir)
+        self.assertEqual(data_repo.git_status_summary(), "ok")
+
+
 if __name__ == "__main__":
     unittest.main()
