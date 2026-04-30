@@ -657,6 +657,19 @@ class TestNotesEndpoints(unittest.TestCase):
             "/api/cards/alpha/backlog/do-thing")
         self.assertEqual(status, 200)
 
+    def test_apply_accepts_null_note_id(self):
+        # Chat sidebar sends note_id: null. Endpoint must accept it.
+        ops = [{"op": "create_card", "board": "alpha", "list": "backlog",
+                "title": "From chat"}]
+        status, result = make_request_port(self.port, "POST", "/api/notes/apply",
+            {"note_id": None, "operations": ops})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["applied"]), 1)
+        # Created card has no source-note attachment.
+        _, card = make_request_port(self.port, "GET",
+            "/api/cards/alpha/backlog/from-chat")
+        self.assertEqual(card.get("attachments") or [], [])
+
 
 class TestChatEndpoint(unittest.TestCase):
     def setUp(self):

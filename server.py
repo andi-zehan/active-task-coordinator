@@ -943,10 +943,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             body = self._read_body()
         except json.JSONDecodeError:
             return self._send_error(400, 'invalid json')
-        note_id = body.get('note_id', '')
+        # note_id may be a string (notes flow) or null/missing (chat flow).
+        note_id = body.get('note_id')
         operations = body.get('operations', [])
-        if not note_id or not isinstance(operations, list):
-            return self._send_error(400, 'note_id and operations required')
+        if not isinstance(operations, list):
+            return self._send_error(400, 'operations list required')
         result = notes.apply_operations(operations, note_id)
         self._send_json(result)
 
