@@ -880,8 +880,32 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
-    result = data_repo.git_sync_pull()
-    print(f"Data sync pull: {result['status']} — {result['message']}")
+    # First-run migration: derive default config from existing data/ state.
+    if not sync_config.CONFIG_PATH.exists():
+        defaults = sync_config.migrate_defaults(
+            DATA_DIR, fallback_remote_url=DATA_REPO_URL_FALLBACK,
+        )
+        sync_config.save(defaults)
+        print(f"sync_config: created defaults (mode={defaults['mode']})", flush=True)
+
+    cfg = sync_config.load()
+
+    # Reconcile data/ to match the config (idempotent, no network).
+    rec = data_repo.reconcile_repo_state(cfg)
+    print(f"sync: reconcile {rec['status']} — {rec['message']}", flush=True)
+
+    # Auto-pull, unless suppressed by a recent config change.
+    if cfg["mode"] == "remote" and not cfg["skip_next_pull"]:
+        result = data_repo.git_sync_pull()
+        print(f"sync: pull {result['status']} — {result['message']}", flush=True)
+    elif cfg["skip_next_pull"]:
+        print(
+            "sync: auto-pull skipped after mode change — push your local commits "
+            "first, then pull manually if desired",
+            flush=True,
+        )
+        sync_config.set_skip_next_pull(False)
+
     ensure_data_dir()
     # Run janitor once on startup, then every 24 hours in a background thread
     try:
