@@ -1,4 +1,5 @@
 """Notes-to-cards integration: snapshot, archive, LLM call, apply."""
+import copy
 import json
 import re
 from datetime import date, datetime
@@ -9,7 +10,6 @@ from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
     _WRITE_OP_NAMES, _queue_op,
     _summarize_read_result, _queued_summary_fields,
-    _parse_checklist, _extract_description,
 )
 
 NOTES_DIR = Path(__file__).parent / "notes"
@@ -137,7 +137,23 @@ FINISH_TOOL_DEF = {
     },
 }
 
-TOOLS = READ_TOOL_DEFS + WRITE_TOOL_DEFS + [FINISH_TOOL_DEF]
+def _build_notes_tools() -> list[dict]:
+    """Assemble the notes-flavored TOOLS list with a notes-specific override.
+
+    Deep-copies the shared defs so mutating them here doesn't affect chat.
+    """
+    tools = [copy.deepcopy(t) for t in (READ_TOOL_DEFS + WRITE_TOOL_DEFS)]
+    for t in tools:
+        if t["name"] == "list_boards":
+            t["description"] = (
+                "List all boards with name and card count. "
+                "The INDEX in the first user message already covers this; "
+                "call only if you need a fresh view."
+            )
+    return tools + [FINISH_TOOL_DEF]
+
+
+TOOLS = _build_notes_tools()
 
 
 NOTE_URL_PREFIX = "/api/notes/"
