@@ -435,6 +435,30 @@ class TestApply(unittest.TestCase):
         self.assertEqual(len(result["applied"]), 2)
         self.assertEqual(len(result["skipped"]), 1)
 
+    def test_apply_with_no_note_id_skips_attachment_and_recording(self):
+        ops = [{"op": "create_card", "board": "alpha", "list": "backlog",
+                "title": "Chat-created"}]
+        result = notes.apply_operations(ops, None)
+        self.assertEqual(len(result["applied"]), 1)
+        card = server.read_card("alpha", "backlog", "chat-created")
+        self.assertIsNotNone(card)
+        # No source-note attachment when note_id is None.
+        self.assertEqual(card.get("attachments") or [], [])
+
+    def test_apply_with_no_note_id_skips_comment_link(self):
+        # Pre-create a card to comment on.
+        make_card(self.data_dir, "alpha", "backlog", "target",
+                  "---\ntitle: T\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
+                  "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        ops = [{"op": "add_comment", "board": "alpha", "list": "backlog",
+                "card": "target", "text": "from chat"}]
+        result = notes.apply_operations(ops, None)
+        self.assertEqual(len(result["applied"]), 1)
+        card = server.read_card("alpha", "backlog", "target")
+        self.assertIn("from chat", card["body"])
+        # No "from [meeting note]" link when note_id is None.
+        self.assertNotIn("from [meeting note]", card["body"])
+
 
 if __name__ == "__main__":
     unittest.main()

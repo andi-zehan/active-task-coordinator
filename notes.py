@@ -214,9 +214,10 @@ def _do_create_card(op: dict, note_id: str) -> dict:
         "assignee": op.get("assignee", ""),
         "relations": [],
         "custom_fields": {},
-        "attachments": [
-            {"name": f"Source note: {note_id}", "url": f"{NOTE_URL_PREFIX}{note_id}"}
-        ],
+        "attachments": (
+            [{"name": f"Source note: {note_id}", "url": f"{NOTE_URL_PREFIX}{note_id}"}]
+            if note_id else []
+        ),
     }
     body = _build_card_body(op.get("description", ""), op.get("checklist") or [])
     server.write_card(board, list_slug, slug, meta, body)
@@ -231,8 +232,11 @@ def _do_add_comment(op: dict, note_id: str) -> dict:
         raise ValueError("target card missing")
     body = card["body"]
     today = _today_iso()
-    note_link = f"_(from [meeting note]({NOTE_URL_PREFIX}{note_id}))_"
-    new_comment = f"\n**{today} - Agent:**\n{op['text']}\n\n{note_link}\n"
+    if note_id:
+        note_link = f"_(from [meeting note]({NOTE_URL_PREFIX}{note_id}))_"
+        new_comment = f"\n**{today} - Agent:**\n{op['text']}\n\n{note_link}\n"
+    else:
+        new_comment = f"\n**{today} - Agent:**\n{op['text']}\n"
     body = body.rstrip() + "\n" + new_comment
     card["updated"] = today
     server.write_card(board, list_slug, card_slug, card, body)
@@ -361,7 +365,8 @@ def apply_operations(operations: list[dict], note_id: str) -> dict:
         try:
             outcome = handler(op, note_id)
             applied.append({"op": op["op"], "target": outcome["target"]})
-            _record_in_note(note_id, op, outcome["target"])
+            if note_id:
+                _record_in_note(note_id, op, outcome["target"])
         except (ValueError, KeyError, FileNotFoundError) as e:
             skipped.append({"op": op, "reason": str(e)})
     return {"applied": applied, "skipped": skipped}
