@@ -7,6 +7,9 @@
 <style>
 /* ── Reset & Base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { cursor: default !important; }
+input, textarea, [contenteditable] { cursor: text !important; }
+[disabled] { cursor: not-allowed !important; }
 
 :root {
   --chat-sidebar-w: 560px;
@@ -274,7 +277,6 @@ a { color: #0052cc; text-decoration: none; }
   flex: 1;
   min-width: 0;
   overflow-x: auto;
-  cursor: grab;
 }
 .lanes-bar {
   display: flex;
@@ -4099,33 +4101,48 @@ document.addEventListener('keydown', (e) => {
 (() => {
   const pan = document.getElementById('board-columns');
   if (!pan) return;
-  let active = false, startX = 0, startY = 0, startScrollX = 0, startScrollY = 0;
+  let active = false, lastClientX = 0, lastClientY = 0;
   const interactive = 'card,button,input,textarea,select,a,.column-cards,.swimlane-drag-handle,.board-edit-popover,.swimlane-header-name';
 
   pan.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     if (e.target.closest(interactive)) return;
+    e.preventDefault(); // suppress native drag on any draggable descendants
     active = true;
-    startX = e.pageX;
-    startY = e.pageY;
-    startScrollX = pan.scrollLeft;
-    startScrollY = window.scrollY;
-    pan.style.cursor = 'grabbing';
+    lastClientX = e.clientX;
+    lastClientY = e.clientY;
     pan.style.userSelect = 'none';
   });
+  let pendingDx = 0, pendingDy = 0, rafId = 0;
   window.addEventListener('mousemove', (e) => {
     if (!active) return;
-    pan.scrollLeft = startScrollX - (e.pageX - startX);
-    window.scrollTo(window.scrollX, startScrollY - (e.pageY - startY));
+    if (e.buttons === 0) { stop(); return; }
+    // Use clientX/Y deltas — they're viewport-relative, so scrolling the
+    // window doesn't poison subsequent readings the way pageY does.
+    pendingDx += e.clientX - lastClientX;
+    pendingDy += e.clientY - lastClientY;
+    lastClientX = e.clientX;
+    lastClientY = e.clientY;
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      if (!active) return;
+      pan.scrollLeft -= pendingDx;
+      window.scrollBy(0, -pendingDy);
+      pendingDx = 0;
+      pendingDy = 0;
+    });
   });
-  const stop = () => {
+  function stop() {
     if (!active) return;
     active = false;
-    pan.style.cursor = '';
+    pendingDx = 0;
+    pendingDy = 0;
     pan.style.userSelect = '';
-  };
+  }
   window.addEventListener('mouseup', stop);
-  window.addEventListener('mouseleave', stop);
+  window.addEventListener('blur', stop);
+  window.addEventListener('dragstart', stop);
 })();
 
 /* ================================================================
