@@ -700,6 +700,7 @@ a { color: #0052cc; text-decoration: none; }
 .dash-card .dash-list { font-size: 11px; color: #5e6c84; background: #f4f5f7; padding: 1px 6px; border-radius: 3px; }
 .dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 6px; }
 .dash-card.dragging { opacity: 0.4; }
+.dash-card.card-settling { animation: cardSettle 0.25s ease-out; }
 .dash-section.drag-over { outline: 2px dashed #0052cc; outline-offset: -2px; }
 .dash-section.drag-over.no-drop { outline-color: #e74c3c; cursor: not-allowed; }
 
@@ -2386,17 +2387,85 @@ async function renderDashboard() {
       try { payload = JSON.parse(e.dataTransfer.getData('text/plain')); }
       catch { return; }
       const newDue = bucketToDueDate(bucket);
+
+      const cardEl = container.querySelector(
+        `.dash-card[data-board="${CSS.escape(payload.board)}"][data-list="${CSS.escape(payload.list)}"][data-card="${CSS.escape(payload.card)}"]`
+      );
+      if (!cardEl) return;
+      const sourceSection = cardEl.closest('.dash-section');
+      if (sourceSection === section) return;
+
+      moveDashCardTo(cardEl, section, payload.board, newDue);
+
       try {
         await api.put(
           `/api/cards/${payload.board}/${payload.list}/${payload.card}`,
           { due: newDue });
       } catch (err) {
         alert('Failed to update due date: ' + err.message);
-        return;
+        await renderDashboard();
       }
-      await renderDashboard();
     });
   });
+}
+
+function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
+  const sourceSection = cardEl.closest('.dash-section');
+
+  // Update the card's own due-date label and overdue class.
+  const dueEl = cardEl.querySelector('.dash-due');
+  if (dueEl) {
+    dueEl.textContent = formatDate(newDueIso);
+    dueEl.classList.toggle('overdue', !!newDueIso && isOverdue(newDueIso) && cardEl.dataset.list !== 'done');
+  }
+
+  // Find or create the per-board group inside the destination section.
+  const titles = [...destSection.querySelectorAll('.dash-group-title')];
+  let groupTitle = titles.find(t => t.textContent === boardName);
+  if (!groupTitle) {
+    // Section may currently show "No cards" — clear it first.
+    const empty = destSection.querySelector('.dash-empty');
+    if (empty) empty.remove();
+    groupTitle = document.createElement('div');
+    groupTitle.className = 'dash-group-title';
+    groupTitle.textContent = boardName;
+    destSection.appendChild(groupTitle);
+  }
+
+  // Insert the card right after the group's last card (or right after the title).
+  let insertAfter = groupTitle;
+  let next = groupTitle.nextElementSibling;
+  while (next && next.classList.contains('dash-card')) {
+    insertAfter = next;
+    next = next.nextElementSibling;
+  }
+  insertAfter.after(cardEl);
+
+  // Animate the moved card.
+  cardEl.classList.add('card-settling');
+  cardEl.addEventListener('animationend', () => cardEl.classList.remove('card-settling'), { once: true });
+
+  // Clean up the source group: drop its title if empty, replace section body if empty.
+  const sourceTitles = [...sourceSection.querySelectorAll('.dash-group-title')];
+  const sourceGroupTitle = sourceTitles.find(t => t.textContent === boardName);
+  if (sourceGroupTitle) {
+    const after = sourceGroupTitle.nextElementSibling;
+    if (!after || !after.classList.contains('dash-card')) {
+      sourceGroupTitle.remove();
+    }
+  }
+  if (!sourceSection.querySelector('.dash-card')) {
+    const empty = document.createElement('div');
+    empty.className = 'dash-empty';
+    empty.textContent = 'No cards';
+    sourceSection.appendChild(empty);
+  }
+
+  // Update the count badges on both sections.
+  for (const s of [sourceSection, destSection]) {
+    const badge = s.querySelector('.dash-section-card-count');
+    if (badge) badge.textContent = s.querySelectorAll('.dash-card').length;
+  }
 }
 
 function bucketToDueDate(bucket) {
