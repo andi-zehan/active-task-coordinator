@@ -571,11 +571,20 @@ a { color: #0052cc; text-decoration: none; }
 .card .card-assignee { }
 .card .card-due { margin-left: auto; }
 .card .card-due.overdue { color: #e74c3c; font-weight: 600; }
+.card .card-due.missing,
+.card .card-assignee.missing { color: #172b4d; }
+.card { position: relative; }
 .card .card-checklist-bar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  font-size: 10px;
+  color: #5e6c84;
 }
+.card:has(.card-checklist-bar) .card-title { padding-right: 70px; }
 .card .checklist-progress {
   width: 48px;
   height: 4px;
@@ -616,12 +625,12 @@ a { color: #0052cc; text-decoration: none; }
   min-width: 0;
   min-height: 140px;
 }
-.dash-section.overdue { background: #304D6D; }
+.dash-section.overdue { background: #AD343E; }
 .dash-section.today { background: #63ADF2; }
 .dash-section.week { background: #A7CCED; }
-.dash-section.next-week { background: #545E75; }
-.dash-section.later { background: #82A0BC; }
-.dash-section.someday { background: #6B8FB3; }
+.dash-section.next-week { background: #82A0BC; }
+.dash-section.later { background: #6B8FB3; }
+.dash-section.someday { background: #545E75; }
 .dash-section-title {
   display: flex;
   align-items: center;
@@ -633,14 +642,14 @@ a { color: #0052cc; text-decoration: none; }
   border-bottom: 2px solid #dfe1e6;
 }
 .dash-section-title.overdue,
-.dash-section-title.next-week {
+.dash-section-title.someday {
   color: #fff;
   border-color: rgba(255,255,255,0.45);
 }
 .dash-section-title.today,
 .dash-section-title.week,
-.dash-section-title.later,
-.dash-section-title.someday {
+.dash-section-title.next-week,
+.dash-section-title.later {
   color: #0b1f33;
   border-color: rgba(23,43,77,0.25);
 }
@@ -654,8 +663,8 @@ a { color: #0052cc; text-decoration: none; }
 }
 .dash-section.today .dash-section-card-count,
 .dash-section.week .dash-section-card-count,
-.dash-section.later .dash-section-card-count,
-.dash-section.someday .dash-section-card-count {
+.dash-section.next-week .dash-section-card-count,
+.dash-section.later .dash-section-card-count {
   background: rgba(23,43,77,0.18);
 }
 .dash-group-title {
@@ -667,19 +676,19 @@ a { color: #0052cc; text-decoration: none; }
   margin: 12px 0 6px;
 }
 .dash-section.overdue .dash-group-title,
-.dash-section.next-week .dash-group-title,
+.dash-section.someday .dash-group-title,
 .dash-section.overdue .dash-empty,
-.dash-section.next-week .dash-empty {
+.dash-section.someday .dash-empty {
   color: rgba(255,255,255,0.78);
 }
 .dash-section.today .dash-group-title,
 .dash-section.week .dash-group-title,
+.dash-section.next-week .dash-group-title,
 .dash-section.later .dash-group-title,
-.dash-section.someday .dash-group-title,
 .dash-section.today .dash-empty,
 .dash-section.week .dash-empty,
-.dash-section.later .dash-empty,
-.dash-section.someday .dash-empty {
+.dash-section.next-week .dash-empty,
+.dash-section.later .dash-empty {
   color: rgba(11,31,51,0.72);
 }
 .dash-card {
@@ -834,10 +843,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 /* When the lanes bar runs out of room, hide the count badge first */
 @media (max-width: 1100px) {
   .lane-sidebar-item .sidebar-count { display: none; }
-}
-/* Dashboard: extra column on big monitors */
-@media (min-width: 1800px) {
-  .dashboard-view { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* ── Calendar View ────────────────────────────────────────────── */
@@ -1645,6 +1650,9 @@ function isDueThisWeek(dateStr) {
 }
 
 function parseChecklistFromBody(card) {
+  if (typeof card.checklist_total === 'number') {
+    return { done: card.checklist_done || 0, total: card.checklist_total };
+  }
   const body = card.body || '';
   const checked = (body.match(/- \[x\]/gi) || []).length;
   const unchecked = (body.match(/- \[ \]/g) || []).length;
@@ -1748,17 +1756,24 @@ async function populateFilterOptions() {
       try {
         data = await api.get('/api/boards/' + b.slug);
       } catch { continue; }
+      let hasUnassigned = false;
       for (const listName of Object.keys(data.lists || {})) {
         for (const c of (data.lists[listName] || [])) {
           if (c.assignee) assignees.add(c.assignee);
+          else hasUnassigned = true;
           const cl = c.labels || [];
           for (const l of (Array.isArray(cl) ? cl : [])) labels.add(l);
         }
       }
+      if (hasUnassigned) assignees.add('__unassigned__');
     }
     const asel = document.getElementById('filter-assignee');
     asel.innerHTML = '<option value="">All Assignees</option>';
-    for (const a of [...assignees].sort()) {
+    const sorted = [...assignees].filter(a => a !== '__unassigned__').sort();
+    if (assignees.has('__unassigned__')) {
+      asel.innerHTML += `<option value="__unassigned__">(Unassigned)</option>`;
+    }
+    for (const a of sorted) {
       asel.innerHTML += `<option value="${escHtml(a)}">${escHtml(a)}</option>`;
     }
     const lsel = document.getElementById('filter-label');
@@ -1775,7 +1790,8 @@ function renderFilterChips() {
   const container = document.getElementById('filter-chips');
   container.innerHTML = '';
   if (state.filters.assignee) {
-    container.innerHTML += `<span class="filter-chip">Assignee: ${escHtml(state.filters.assignee)} <button class="chip-remove" data-filter="assignee">&times;</button></span>`;
+    const label = state.filters.assignee === '__unassigned__' ? 'Unassigned' : state.filters.assignee;
+    container.innerHTML += `<span class="filter-chip">Assignee: ${escHtml(label)} <button class="chip-remove" data-filter="assignee">&times;</button></span>`;
   }
   if (state.filters.label) {
     container.innerHTML += `<span class="filter-chip">Label: ${escHtml(state.filters.label)} <button class="chip-remove" data-filter="label">&times;</button></span>`;
@@ -1796,7 +1812,13 @@ function renderFilterChips() {
 
 function applyFilters(cards) {
   return cards.filter(c => {
-    if (state.filters.assignee && c.assignee !== state.filters.assignee) return false;
+    if (state.filters.assignee) {
+      if (state.filters.assignee === '__unassigned__') {
+        if (c.assignee) return false;
+      } else if (c.assignee !== state.filters.assignee) {
+        return false;
+      }
+    }
     if (state.filters.label) {
       const labels = Array.isArray(c.labels) ? c.labels : [];
       if (!labels.includes(state.filters.label)) return false;
@@ -1865,22 +1887,28 @@ async function moveBoard(slug, delta) {
   await renderBoard();
 }
 
+let _renderBoardToken = 0;
 async function renderBoard() {
+  const myToken = ++_renderBoardToken;
   const container = document.getElementById('board-columns');
   if (state.boards.length === 0) {
     container.innerHTML = '<div style="padding:40px;color:#5e6c84;text-align:center;">No boards yet. Create a board to get started.</div>';
     return;
   }
+
+  // Fetch all boards in parallel before touching the DOM, so a stale render
+  // can't interleave appends with a fresher one.
+  const boardDataList = await Promise.all(
+    state.boards.map(b => api.get('/api/boards/' + b.slug).catch(() => null))
+  );
+  if (myToken !== _renderBoardToken) return; // a newer render superseded us
+
   container.innerHTML = '';
 
   for (let boardIdx = 0; boardIdx < state.boards.length; boardIdx++) {
     const boardInfo = state.boards[boardIdx];
-    let boardData;
-    try {
-      boardData = await api.get('/api/boards/' + boardInfo.slug);
-    } catch {
-      continue;
-    }
+    const boardData = boardDataList[boardIdx];
+    if (!boardData) continue;
     const lists = boardData.lists || {};
     const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
     const boardColor = boardData.color || '#4A90D9';
@@ -2139,19 +2167,11 @@ function createCardElement(card) {
   cardEl.dataset.board = card.board;
   cardEl.dataset.list = card.list;
 
-  const labels = Array.isArray(card.labels) ? card.labels : [];
-  let labelsHtml = '';
-  if (labels.length > 0) {
-    labelsHtml = '<div class="card-labels">' +
-      labels.map(l => `<div class="card-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('') +
-      '</div>';
-  }
-
   const cl = parseChecklistFromBody(card);
   let checkHtml = '';
   if (cl.total > 0) {
     const pct = Math.round((cl.done / cl.total) * 100);
-    checkHtml = `<span class="card-checklist-bar">
+    checkHtml = `<span class="card-checklist-bar" title="${cl.done} of ${cl.total} done">
       <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
       <span>${cl.done}/${cl.total}</span>
     </span>`;
@@ -2159,14 +2179,14 @@ function createCardElement(card) {
 
   const assignee = typeof card.assignee === 'string' ? card.assignee : '';
   const due = typeof card.due === 'string' ? card.due : '';
-  const dueClass = due && isOverdue(due) && card.list !== 'done' ? 'overdue' : '';
-  const metaParts = [];
-  metaParts.push(`<span class="card-assignee">${assignee ? escHtml(assignee) : '&mdash;'}</span>`);
-  metaParts.push(`<span class="card-due ${dueClass}">${due ? formatDate(due) : '&mdash;'}</span>`);
-  if (checkHtml) metaParts.push(checkHtml);
-  const metaHtml = `<div class="card-meta">${metaParts.join('')}</div>`;
+  const dueClass = due ? (isOverdue(due) && card.list !== 'done' ? 'overdue' : '') : 'missing';
+  const assigneeHtml = assignee
+    ? `<span class="card-assignee">${escHtml(assignee)}</span>`
+    : `<span class="card-assignee missing">Unassigned</span>`;
+  const dueHtml = `<span class="card-due ${dueClass}">${due ? formatDate(due) : 'No due-date'}</span>`;
+  const metaHtml = `<div class="card-meta">${assigneeHtml}${dueHtml}</div>`;
 
-  cardEl.innerHTML = `${labelsHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
+  cardEl.innerHTML = `${checkHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
 
   cardEl.addEventListener('click', () => {
     const currentBoard = cardEl.dataset.board;
@@ -2410,6 +2430,27 @@ async function renderDashboard() {
       }
     });
   });
+}
+
+function updateCardChecklistBar(board, list, slug, card) {
+  const cardEl = document.querySelector(
+    `.card[data-board="${CSS.escape(board)}"][data-list="${CSS.escape(list)}"][data-card="${CSS.escape(slug)}"]`
+  );
+  if (!cardEl) return;
+  const oldBar = cardEl.querySelector(':scope > .card-checklist-bar');
+  if (oldBar) oldBar.remove();
+  const cl = parseChecklistFromBody(card);
+  if (cl.total > 0) {
+    const pct = Math.round((cl.done / cl.total) * 100);
+    const span = document.createElement('span');
+    span.className = 'card-checklist-bar';
+    span.title = `${cl.done} of ${cl.total} done`;
+    span.innerHTML = `
+      <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
+      <span>${cl.done}/${cl.total}</span>`;
+    const titleEl = cardEl.querySelector('.card-title');
+    cardEl.insertBefore(span, titleEl);
+  }
 }
 
 function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
@@ -2941,7 +2982,7 @@ function renderModal(card) {
       const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { checklist: clStr });
       state.modalCard = updated;
       renderModal(updated);
-      refreshCurrentView();
+      updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
     });
   });
 
@@ -2954,7 +2995,7 @@ function renderModal(card) {
       const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { checklist: clStr });
       state.modalCard = updated;
       renderModal(updated);
-      refreshCurrentView();
+      updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
     });
   });
 
@@ -2969,7 +3010,7 @@ function renderModal(card) {
     const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { checklist: clStr });
     state.modalCard = updated;
     renderModal(updated);
-    refreshCurrentView();
+    updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
   };
   addCheckBtn.addEventListener('click', addChecklistItem);
   addCheckInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addChecklistItem(); });

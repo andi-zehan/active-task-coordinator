@@ -279,12 +279,15 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode('utf-8')
-        self.send_response(status)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
 
     def _send_error(self, status, message):
         self._send_json({'error': message}, status)
@@ -525,6 +528,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 card = read_card(board_slug, list_name, card_slug)
                 if card:
                     summary = {k: v for k, v in card.items() if k != 'body'}
+                    body = card.get('body', '') or ''
+                    done = len(re.findall(r'- \[x\]', body, flags=re.IGNORECASE))
+                    todo = len(re.findall(r'- \[ \]', body))
+                    if done + todo > 0:
+                        summary['checklist_done'] = done
+                        summary['checklist_total'] = done + todo
                     cards.append(summary)
             lists[list_name] = cards
         meta['lists'] = lists
