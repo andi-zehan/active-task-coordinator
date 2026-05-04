@@ -163,8 +163,6 @@ a { color: #0052cc; text-decoration: none; }
   font-size: 13px;
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
-  width: 120px;
-  text-align: center;
 }
 .btn-sync:hover { background: #ebecf0; color: #172b4d; }
 .btn-sync.syncing { opacity: 0.6; pointer-events: none; }
@@ -172,6 +170,7 @@ a { color: #0052cc; text-decoration: none; }
 .btn-sync.sync-err { background: #ffebe6; color: #bf2600; border-color: #ffbdad; }
 .btn-sync.sync-dirty { background: #e74c3c; color: #fff; border-color: #c0392b; }
 .btn-sync.sync-dirty:hover { background: #c0392b; }
+.top-btn { min-width: 130px; text-align: center; padding: 5px 10px; }
 .header-btn {
   padding: 5px 12px;
   background: #f4f5f7;
@@ -275,19 +274,14 @@ a { color: #0052cc; text-decoration: none; }
   cursor: grab;
 }
 .lanes-bar {
-  position: sticky;
-  top: 48px;
-  z-index: 90;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 16px;
-  background: #fff;
-  border-bottom: 1px solid #dfe1e6;
   font-size: 12px;
   overflow: hidden;
+  flex-wrap: wrap;
 }
-.lanes-bar:empty { display: none; }
+.lanes-bar-spacer { flex: 1; }
 .lanes-bar-title {
   font-weight: 700;
   font-size: 11px;
@@ -298,15 +292,15 @@ a { color: #0052cc; text-decoration: none; }
   margin-right: 6px;
 }
 .lane-sidebar-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
   color: #172b4d;
-  flex: 1 1 0;
-  min-width: 32px;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
 }
 .lane-sidebar-item:hover { background: #f4f5f7; }
@@ -1293,8 +1287,8 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   <span class="app-name">ATC</span>
   <select id="board-select" style="display:none"></select>
   <div class="view-switcher">
-    <button data-view="board" class="active">Board</button>
-    <button data-view="dashboard">Dashboard</button>
+    <button data-view="board" class="active">Kanban</button>
+    <button data-view="dashboard">Timeline</button>
     <button data-view="calendar">Calendar</button>
     <button data-view="table">Table</button>
   </div>
@@ -1303,15 +1297,15 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
     <input type="text" id="search-input" placeholder="Search cards... ( / )">
     <div class="search-dropdown" id="search-dropdown"></div>
   </div>
-  <button class="btn-new-card" id="btn-new-card">+ New Card</button>
-  <button class="header-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
-  <button class="header-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
-  <button class="header-btn" id="btn-settings" title="LLM settings">&#9881;</button>
-  <button class="btn-sync" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
+  <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
+  <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
+  <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
+  <button class="header-btn top-btn" id="btn-settings" title="LLM settings">&#9881; Settings</button>
+  <button class="btn-sync top-btn" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
 </div>
 
 <!-- ── Filter Bar ─────────────────────────────────────────────── -->
-<div class="filter-bar" id="filter-bar">
+<div class="filter-bar visible" id="filter-bar">
   <label>Filters:</label>
   <select id="filter-assignee"><option value="">All Assignees</option></select>
   <select id="filter-label"><option value="">All Labels</option></select>
@@ -1323,10 +1317,9 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
     <option value="none">No Due Date</option>
   </select>
   <div class="filter-chips" id="filter-chips"></div>
+  <div class="lanes-bar-spacer"></div>
+  <div class="lanes-bar" id="lane-sidebar"></div>
 </div>
-
-<!-- ── Lane shortcut row (board view only) ──────────────────── -->
-<div class="lanes-bar" id="lane-sidebar"></div>
 
 <!-- ── View Containers ────────────────────────────────────────── -->
 <div class="view-container active" id="view-board">
@@ -1742,19 +1735,22 @@ async function loadBoards() {
    Filter Options
    ================================================================ */
 async function populateFilterOptions() {
-  if (!state.currentBoard) return;
+  if (!state.boards || state.boards.length === 0) return;
   try {
-    const data = await api.get('/api/boards/' + state.currentBoard);
-    const allCards = [];
-    for (const listName of Object.keys(data.lists || {})) {
-      allCards.push(...(data.lists[listName] || []));
-    }
     const assignees = new Set();
     const labels = new Set();
-    for (const c of allCards) {
-      if (c.assignee) assignees.add(c.assignee);
-      const cl = c.labels || [];
-      for (const l of (Array.isArray(cl) ? cl : [])) labels.add(l);
+    for (const b of state.boards) {
+      let data;
+      try {
+        data = await api.get('/api/boards/' + b.slug);
+      } catch { continue; }
+      for (const listName of Object.keys(data.lists || {})) {
+        for (const c of (data.lists[listName] || [])) {
+          if (c.assignee) assignees.add(c.assignee);
+          const cl = c.labels || [];
+          for (const l of (Array.isArray(cl) ? cl : [])) labels.add(l);
+        }
+      }
     }
     const asel = document.getElementById('filter-assignee');
     asel.innerHTML = '<option value="">All Assignees</option>';
@@ -2026,7 +2022,7 @@ async function renderBoard() {
   setupSwimlaneDrag(container);
 
   const sidebar = document.getElementById('lane-sidebar');
-  sidebar.innerHTML = '<div class="lanes-bar-title">Lanes</div>';
+  sidebar.innerHTML = '';
   container.querySelectorAll('.swimlane').forEach(lane => {
     const slug = lane.dataset.board;
     const name = lane.querySelector('.swimlane-header-name')?.textContent || slug;
@@ -2034,15 +2030,14 @@ async function renderBoard() {
     const count = (lane.querySelector('.swimlane-card-count')?.textContent || '0').trim();
     const item = document.createElement('div');
     item.className = 'lane-sidebar-item';
-    item.title = `${name} (${count})`;
+    item.title = name;
     item.innerHTML = `
       <div class="sidebar-color" style="background:${color}"></div>
       <span class="sidebar-name">${escHtml(name)}</span>
-      <span class="sidebar-count">${count}</span>
     `;
     item.addEventListener('click', () => {
-      const lanesBar = document.getElementById('lane-sidebar');
-      const offset = 48 + (lanesBar?.offsetHeight || 0) + 8;
+      const filterBar = document.getElementById('filter-bar');
+      const offset = 48 + (filterBar?.offsetHeight || 0) + 8;
       const y = lane.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top: y, behavior: 'smooth' });
     });
