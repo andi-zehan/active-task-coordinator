@@ -1656,8 +1656,10 @@ function parseChecklistFromBody(card) {
     return { done: card.checklist_done || 0, total: card.checklist_total };
   }
   const body = card.body || '';
-  const checked = (body.match(/- \[x\]/gi) || []).length;
-  const unchecked = (body.match(/- \[ \]/g) || []).length;
+  const section = body.match(/## Checklist\n\n([\s\S]*?)(\n+## |$)/);
+  const scope = section ? section[1] : '';
+  const checked = (scope.match(/- \[x\]/gi) || []).length;
+  const unchecked = (scope.match(/- \[ \]/g) || []).length;
   return { done: checked, total: checked + unchecked };
 }
 
@@ -2985,6 +2987,7 @@ function renderModal(card) {
       state.modalCard = updated;
       renderModal(updated);
       updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
+      refreshCurrentView();
     });
   });
 
@@ -2998,6 +3001,7 @@ function renderModal(card) {
       state.modalCard = updated;
       renderModal(updated);
       updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
+      refreshCurrentView();
     });
   });
 
@@ -3013,6 +3017,7 @@ function renderModal(card) {
     state.modalCard = updated;
     renderModal(updated);
     updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
+    refreshCurrentView();
   };
   addCheckBtn.addEventListener('click', addChecklistItem);
   addCheckInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addChecklistItem(); });
