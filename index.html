@@ -3283,11 +3283,10 @@ function renderModal(card) {
     <div id="relations">`;
   for (let i = 0; i < relations.length; i++) {
     const rel = relations[i];
-    const parts = typeof rel === 'string' ? rel.split('/') : [];
-    const isPath = parts.length === 3;
-    const display = isPath
-      ? `<a href="#" class="relation-link" data-board="${escHtml(parts[0])}" data-list="${escHtml(parts[1])}" data-slug="${escHtml(parts[2])}">${escHtml(parts[2])}</a> <span class="relation-meta">${escHtml(parts[0])} / ${escHtml(formatListName(parts[1]))}</span>`
-      : `<span>${escHtml(String(rel))}</span>`;
+    const entry = state.idIndex.get(rel);
+    const display = entry
+      ? `<a href="#" class="card-link" data-id="${escHtml(rel)}">${escHtml(rel)}: ${escHtml(entry.title)}</a> <span class="relation-meta">${escHtml(entry.board)} / ${escHtml(formatListName(entry.list))}</span>`
+      : `<span class="card-link missing">${escHtml(String(rel))} (not found)</span>`;
     html += `<div class="relation-row">
       ${display}
       <button class="remove-rel" data-index="${i}">&times;</button>
@@ -3545,7 +3544,7 @@ function renderModal(card) {
     });
   });
 
-  // Relations — typeahead picker over /api/search
+  // Relations — typeahead picker using state.idIndex
   const addRelation = (triggerEl) => {
     if (!triggerEl) return;
     const form = document.createElement('div');
@@ -3569,12 +3568,10 @@ function renderModal(card) {
 
     let active = -1;
     let current = [];
-    const ownPath = `${cardPath.board}/${cardPath.list}/${cardPath.slug}`;
 
-    const pick = async (r) => {
-      const rel = `${r.board}/${r.list}/${r.slug}`;
-      if (relations.includes(rel)) { restore(); return; }
-      relations.push(rel);
+    const pick = async (entry) => {
+      if (relations.includes(entry.id)) { restore(); return; }
+      relations.push(entry.id);
       await saveCard({ relations });
     };
 
@@ -3585,10 +3582,10 @@ function renderModal(card) {
           : '';
         return;
       }
-      results.innerHTML = current.map((r, i) => `
+      results.innerHTML = current.map((entry, i) => `
         <div class="typeahead-result${i === active ? ' active' : ''}" data-i="${i}">
-          <div class="ta-title">${escHtml(r.title)}</div>
-          <div class="ta-meta">${escHtml(r.board)} / ${escHtml(formatListName(r.list))}${r.assignee ? ' · ' + escHtml(r.assignee) : ''}</div>
+          <div class="ta-title">${escHtml(entry.id)}: ${escHtml(entry.title)}</div>
+          <div class="ta-meta">${escHtml(entry.board)} / ${escHtml(formatListName(entry.list))}</div>
         </div>
       `).join('');
       results.querySelectorAll('.typeahead-result').forEach(el => {
@@ -3599,25 +3596,22 @@ function renderModal(card) {
       });
     };
 
-    let searchTimer = null;
     input.addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      const q = input.value.trim();
+      const q = input.value.trim().toLowerCase();
       active = -1;
       if (!q) { current = []; render(); return; }
-      searchTimer = setTimeout(async () => {
-        try {
-          const raw = await api.get('/api/search?q=' + encodeURIComponent(q));
-          // Filter out this card and any already-related cards
-          current = raw.filter(r => {
-            const path = `${r.board}/${r.list}/${r.slug}`;
-            return path !== ownPath && !relations.includes(path);
-          });
-          render();
-        } catch {
-          current = []; render();
+      // Filter idIndex entries by id-substring or title-substring
+      current = [];
+      for (const [id, entry] of state.idIndex) {
+        if (current.length >= 10) break;
+        if (id === card.id) continue;  // skip self
+        if (relations.includes(id)) continue;  // skip already-related
+        const text = `${id} ${entry.title}`.toLowerCase();
+        if (text.includes(q)) {
+          current.push({ id, ...entry });
         }
-      }, 200);
+      }
+      render();
     });
 
     input.addEventListener('keydown', (e) => {
@@ -3648,10 +3642,15 @@ function renderModal(card) {
       refreshCurrentView();
     });
   });
-  body.querySelectorAll('.relation-link').forEach(a => {
+  body.querySelectorAll('.card-link[data-id]').forEach(a => {
     a.addEventListener('click', (e) => {
+      if (a.classList.contains('missing')) return;
       e.preventDefault();
-      openCardModal(a.dataset.board, a.dataset.list, a.dataset.slug);
+      const id = a.dataset.id;
+      const entry = state.idIndex.get(id);
+      if (entry) {
+        openCardModal(entry.board, entry.list, id);
+      }
     });
   });
 
