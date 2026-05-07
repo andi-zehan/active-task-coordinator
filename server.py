@@ -677,7 +677,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         title = data.get('title', '').strip()
         if not title:
             return self._send_error(400, 'Card title is required')
-        slug = slugify(title)
         card_id = next_id()
         today_str = str(date.today())
         meta = {
@@ -694,14 +693,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         }
         description = data.get('description', '')
         body = f"\n## Description\n\n{description}\n\n## Checklist\n\n\n\n## Comments\n\n"
-        write_card(board_slug, list_slug, slug, meta, body)
+        write_card(board_slug, list_slug, card_id, meta, body)
         order_path = DATA_DIR / "boards" / board_slug / list_slug / "_order.json"
         order = read_json(order_path)
-        if slug not in order:
-            order.append(slug)
+        if card_id not in order:
+            order.append(card_id)
         write_json(order_path, order)
         register_id(card_id, board_slug, list_slug)
-        meta['slug'] = slug
+        meta['slug'] = card_id
         meta['board'] = board_slug
         meta['list'] = list_slug
         self._send_json(meta, 201)

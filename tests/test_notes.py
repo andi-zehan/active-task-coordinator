@@ -354,14 +354,16 @@ class TestApply(unittest.TestCase):
         result = notes.apply_operations(ops, self.note_id)
         self.assertEqual(len(result["applied"]), 1)
         self.assertEqual(result["skipped"], [])
-        card = server.read_card("alpha", "backlog", "new-thing")
+        # Extract the ID from the target (board/list/id)
+        card_id = result["applied"][0]["target"].split("/")[-1]
+        card = server.read_card("alpha", "backlog", card_id)
         self.assertIsNotNone(card)
         self.assertEqual(card["title"], "New thing")
         # source attachment present
         self.assertTrue(any(a["url"].endswith(self.note_id) for a in card.get("attachments", [])))
         # in _order.json
         order = json.loads((self.data_dir / "boards/alpha/backlog/_order.json").read_text())
-        self.assertIn("new-thing", order)
+        self.assertIn(card_id, order)
 
     def test_apply_add_comment(self):
         make_card(self.data_dir, "alpha", "in-progress", "do-stuff",
@@ -420,10 +422,12 @@ class TestApply(unittest.TestCase):
 
     def test_apply_records_in_note_frontmatter(self):
         ops = [{"op": "create_card", "board": "alpha", "list": "backlog", "title": "X"}]
-        notes.apply_operations(ops, self.note_id)
+        result = notes.apply_operations(ops, self.note_id)
         archived = (notes.NOTES_DIR / f"{self.note_id}.md").read_text()
         self.assertIn("create_card", archived)
-        self.assertIn("alpha/backlog/x", archived)
+        # Target is now recorded with ID, not slug
+        card_id = result["applied"][0]["target"].split("/")[-1]
+        self.assertIn(f"alpha/backlog/{card_id}", archived)
 
     def test_apply_continues_on_partial_failure(self):
         ops = [
@@ -440,7 +444,9 @@ class TestApply(unittest.TestCase):
                 "title": "Chat-created"}]
         result = notes.apply_operations(ops, None)
         self.assertEqual(len(result["applied"]), 1)
-        card = server.read_card("alpha", "backlog", "chat-created")
+        # Extract the ID from the target
+        card_id = result["applied"][0]["target"].split("/")[-1]
+        card = server.read_card("alpha", "backlog", card_id)
         self.assertIsNotNone(card)
         # No source-note attachment when note_id is None.
         self.assertEqual(card.get("attachments") or [], [])
@@ -477,6 +483,17 @@ class TestApply(unittest.TestCase):
         self.assertIn("from chat", card["body"])
         # No "from [meeting note]" link when note_id is None.
         self.assertNotIn("from [meeting note]", card["body"])
+
+    def test_do_create_card_uses_id_as_filename(self):
+        server.reset_id_index()
+        op = {"op": "create_card", "board": "alpha", "list": "ideas",
+              "title": "Foo", "description": "", "checklist": []}
+        result = notes.apply_operations([op], note_id="")
+        self.assertEqual(len(result["applied"]), 1)
+        # Target should be board/list/C-1
+        self.assertTrue(result["applied"][0]["target"].endswith("/C-1"))
+        path = self.data_dir / "boards" / "alpha" / "ideas" / "C-1.md"
+        self.assertTrue(path.exists())
 
 
 if __name__ == "__main__":

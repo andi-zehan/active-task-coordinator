@@ -346,7 +346,8 @@ class TestCardAPI(unittest.TestCase):
             })
         self.assertEqual(status, 201)
         self.assertEqual(data['title'], 'My Card')
-        self.assertEqual(data['slug'], 'my-card')
+        # Slug is now the ID after migration
+        self.assertEqual(data['slug'], data['id'])
         self.assertEqual(data['assignee'], 'Alice')
         self.assertEqual(data['labels'], ['bug', 'urgent'])
 
@@ -362,31 +363,39 @@ class TestCardAPI(unittest.TestCase):
         self.assertEqual(data['id'], 'C-2')
 
     def test_create_card_writes_id_to_frontmatter(self):
-        make_request_port(8090, 'POST',
+        status, data = make_request_port(8090, 'POST',
             '/api/boards/card-board/lists/ideas/cards', {'title': 'Has ID'})
-        card = server.read_card('card-board', 'ideas', 'has-id')
-        self.assertEqual(card['id'], 'C-1')
+        # Filename is the ID, not a slug.
+        path = server.DATA_DIR / "boards" / "card-board" / "ideas" / f"{data['id']}.md"
+        self.assertTrue(path.exists())
+        # Slug field on the response equals the ID (filename).
+        self.assertEqual(data['slug'], data['id'])
+        # _order.json holds the ID.
+        order = server.read_json(server.DATA_DIR / "boards" / "card-board" / "ideas" / "_order.json")
+        self.assertIn(data['id'], order)
 
     def test_get_card(self):
-        make_request_port(8090, 'POST',
+        status, create_data = make_request_port(8090, 'POST',
             '/api/boards/card-board/lists/ideas/cards', {
                 'title': 'Get Me',
                 'description': 'card body text',
             })
+        card_id = create_data['id']
         status, data = make_request_port(8090, 'GET',
-            '/api/cards/card-board/ideas/get-me')
+            f'/api/cards/card-board/ideas/{card_id}')
         self.assertEqual(status, 200)
         self.assertEqual(data['title'], 'Get Me')
         self.assertIn('card body text', data['body'])
 
     def test_update_card(self):
-        make_request_port(8090, 'POST',
+        status, create_data = make_request_port(8090, 'POST',
             '/api/boards/card-board/lists/backlog/cards', {
                 'title': 'Update Me',
                 'description': 'old description',
             })
+        card_id = create_data['id']
         status, data = make_request_port(8090, 'PUT',
-            '/api/cards/card-board/backlog/update-me', {
+            f'/api/cards/card-board/backlog/{card_id}', {
                 'assignee': 'Bob',
                 'description': 'new description',
                 'comment': 'looks good',
@@ -398,38 +407,40 @@ class TestCardAPI(unittest.TestCase):
         self.assertEqual(data['updated'], str(date.today()))
 
     def test_delete_card(self):
-        make_request_port(8090, 'POST',
+        status, create_data = make_request_port(8090, 'POST',
             '/api/boards/card-board/lists/ideas/cards', {
                 'title': 'Delete Me',
             })
+        card_id = create_data['id']
         status, data = make_request_port(8090, 'DELETE',
-            '/api/cards/card-board/ideas/delete-me')
+            f'/api/cards/card-board/ideas/{card_id}')
         self.assertEqual(status, 200)
-        self.assertEqual(data['deleted'], 'delete-me')
+        self.assertEqual(data['deleted'], card_id)
         # Verify it's gone
         status, data = make_request_port(8090, 'GET',
-            '/api/cards/card-board/ideas/delete-me')
+            f'/api/cards/card-board/ideas/{card_id}')
         self.assertEqual(status, 404)
 
     def test_move_card(self):
-        make_request_port(8090, 'POST',
+        status, create_data = make_request_port(8090, 'POST',
             '/api/boards/card-board/lists/ideas/cards', {
                 'title': 'Move Me',
             })
+        card_id = create_data['id']
         status, data = make_request_port(8090, 'PUT',
-            '/api/cards/card-board/ideas/move-me/move', {
+            f'/api/cards/card-board/ideas/{card_id}/move', {
                 'target_list': 'in-progress',
             })
         self.assertEqual(status, 200)
         self.assertEqual(data['to'], 'in-progress')
         # Verify card is in target list
         status, data = make_request_port(8090, 'GET',
-            '/api/cards/card-board/in-progress/move-me')
+            f'/api/cards/card-board/in-progress/{card_id}')
         self.assertEqual(status, 200)
         self.assertEqual(data['title'], 'Move Me')
         # Verify card is gone from source list
         status, data = make_request_port(8090, 'GET',
-            '/api/cards/card-board/ideas/move-me')
+            f'/api/cards/card-board/ideas/{card_id}')
         self.assertEqual(status, 404)
 
     def test_list_cards(self):

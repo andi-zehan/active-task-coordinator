@@ -225,14 +225,10 @@ def _do_create_card(op: dict, note_id: str) -> dict:
     if server.read_board_meta(board) is None:
         raise ValueError("target board missing")
     title = op["title"]
-    slug = server.slugify(title)
-    base_slug = slug
-    n = 2
-    while (server.DATA_DIR / "boards" / board / list_slug / f"{slug}.md").exists():
-        slug = f"{base_slug}-{n}"
-        n += 1
+    card_id = server.next_id()
     today = _today_iso()
     meta = {
+        "id": card_id,
         "title": title,
         "created": today,
         "updated": today,
@@ -247,9 +243,10 @@ def _do_create_card(op: dict, note_id: str) -> dict:
         ),
     }
     body = _build_card_body(op.get("description", ""), op.get("checklist") or [])
-    server.write_card(board, list_slug, slug, meta, body)
-    _append_to_order(board, list_slug, slug)
-    return {"target": f"{board}/{list_slug}/{slug}"}
+    server.write_card(board, list_slug, card_id, meta, body)
+    _append_to_order(board, list_slug, card_id)
+    server.register_id(card_id, board, list_slug)
+    return {"target": f"{board}/{list_slug}/{card_id}"}
 
 
 def _do_add_comment(op: dict, note_id: str) -> dict:
