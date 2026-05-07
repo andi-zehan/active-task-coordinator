@@ -30,6 +30,21 @@ Use read tools liberally to ground your answers. Prefer:
 - search_cards for fuzzy title lookup
 - read_card when you need a card's body, checklist, or comments
 
+Writing cards (when you propose create_card):
+- TITLES are short — the action in 5–8 words, imperative voice, no detail.
+  Good: "Set up internal communication structure".
+  Bad:  "Set up internal communication structure — meetings, frequencies, owners".
+  If the title would exceed ~60 characters, contain an em-dash, colon, parenthetical,
+  or a comma-separated list of items, the long part belongs in the description.
+- The DESCRIPTION carries everything else: background, motivation, scope, mentioned
+  people, dates, quoted phrases. Don't try to fit context into the title.
+- ENUMERATIONS become checklist items, not prose. When the user describes discrete
+  things to do — comma-separated lists, bullet lists, numbered lists, "for each X",
+  "covering A, B, C" — put each item on the `checklist`, NOT in the description.
+  The description explains WHY the work exists; the checklist captures WHAT to do.
+- If a card already exists and the user adds new items to its list, propose
+  add_checklist_item ops (one per item). Don't dump them in an add_comment.
+
 When you have answered the user, just stop calling tools and write a
 short text response. The conversation continues; you do not need a
 'finish' tool.
