@@ -49,13 +49,14 @@ color: "#4A90D9"
 
 ```markdown
 ---
+id: C-12
 title: Implement login page
 assignee: Alice
 labels: [frontend, urgent]
 due: 2026-05-01
 created: 2026-04-23
 updated: 2026-04-23
-relations: [project-beta/backlog/api-auth]
+relations: [C-7, C-23]
 custom_fields:
   priority: high
   effort: M
@@ -84,13 +85,14 @@ Talked to backend team, API will be ready by Friday.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
+| `id` | string | yes | Global card identifier, e.g. `C-12` (assigned automatically) |
 | `title` | string | yes | Card display name |
 | `assignee` | string | no | Team member name |
 | `labels` | list | no | `[label1, label2]` inline format |
 | `due` | date | no | `YYYY-MM-DD` format |
 | `created` | date | yes | Set on creation, never change |
 | `updated` | date | yes | Set to today on every edit |
-| `relations` | list | no | Paths to related cards: `board-slug/list-slug/card-slug` |
+| `relations` | list | no | IDs of related cards: `C-7`, `C-23` |
 | `custom_fields` | map | no | Indented key-value pairs |
 | `attachments` | list | no | Each item has `name` and `url` |
 
@@ -103,6 +105,14 @@ The body has three sections in fixed order, separated by `## ` headers:
 3. **`## Comments`** — Each comment formatted as `**YYYY-MM-DD - Author:**` followed by text
 
 Sections must always be present even if empty. Keep two blank lines between sections.
+
+## Linking to other cards
+
+In any description or comment, write `[[C-12]]` to link to that card. The link
+renders as a clickable chip showing the target card's title. Unknown IDs render
+struck-through as `[[C-99 ?]]` and are inert.
+
+Type `[[` in the description or comment editor to open a typeahead picker.
 
 ## Ordering Files (`_order.json`)
 
@@ -168,8 +178,8 @@ Change `- [ ]` to `- [x]` or vice versa in the `## Checklist` section.
 
 Relations are bidirectional. When linking card A to card B:
 
-1. Add `board-b/list-b/card-b` to card A's `relations` list
-2. Add `board-a/list-a/card-a` to card B's `relations` list
+1. Add card B's id (e.g. `C-7`) to card A's `relations` list
+2. Add card A's id to card B's `relations` list
 
 ## Example: Quick Task Creation
 
@@ -177,6 +187,7 @@ To add a task "Review PR #42" assigned to Bob, due Friday, to the backlog of pro
 
 ```markdown
 ---
+id: C-1
 title: Review PR #42
 assignee: Bob
 labels: [review]
