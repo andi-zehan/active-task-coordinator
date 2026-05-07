@@ -64,13 +64,22 @@ def _extract_description(body: str) -> str:
 
 # --- Tool-def schema builder ---
 
-def _op_props(extra: dict, *, target_card: bool, with_confidence: bool = True) -> dict:
+def _op_props_id(extra: dict, *, with_confidence: bool = True) -> dict:
+    """Properties for write tools that target an existing card by id."""
+    base = {"id": {"type": "string", "description": "Card ID, e.g. C-12"}}
+    base.update(extra)
+    if with_confidence:
+        base["confidence"] = {"type": "string", "enum": _CONF_ENUM}
+        base["reason"] = {"type": "string"}
+    return base
+
+
+def _op_props_create(extra: dict, *, with_confidence: bool = True) -> dict:
+    """Properties for create_card — needs board+list since the card doesn't exist yet."""
     base = {
         "board": {"type": "string"},
         "list": {"type": "string", "enum": _LIST_ENUM},
     }
-    if target_card:
-        base["card"] = {"type": "string"}
     base.update(extra)
     if with_confidence:
         base["confidence"] = {"type": "string", "enum": _CONF_ENUM}
@@ -175,24 +184,24 @@ WRITE_TOOL_DEFS = [
         "description": "Propose a new card. Queued for user confirmation, not created immediately.",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({
+            "properties": _op_props_create({
                 "title": {"type": "string"},
                 "description": {"type": "string"},
                 "checklist": {"type": "array", "items": {"type": "string"}},
                 "due": {"type": "string", "description": "YYYY-MM-DD"},
                 "assignee": {"type": "string"},
                 "labels": {"type": "array", "items": {"type": "string"}},
-            }, target_card=False),
+            }),
             "required": ["board", "list", "title", "confidence", "reason"],
         },
     },
     {
         "name": "add_comment",
-        "description": "Propose adding a comment to an existing card.",
+        "description": "Propose adding a comment to an existing card. Target by id (e.g. C-12).",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({"text": {"type": "string"}}, target_card=True),
-            "required": ["board", "list", "card", "text", "confidence", "reason"],
+            "properties": _op_props_id({"text": {"type": "string"}}),
+            "required": ["id", "text", "confidence", "reason"],
         },
     },
     {
@@ -200,8 +209,8 @@ WRITE_TOOL_DEFS = [
         "description": "Propose marking an existing checklist item done. 'item' is matched as a case-insensitive substring.",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({"item": {"type": "string"}}, target_card=True),
-            "required": ["board", "list", "card", "item", "confidence", "reason"],
+            "properties": _op_props_id({"item": {"type": "string"}}),
+            "required": ["id", "item", "confidence", "reason"],
         },
     },
     {
@@ -209,19 +218,19 @@ WRITE_TOOL_DEFS = [
         "description": "Propose adding a new item to a card's checklist.",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({"item": {"type": "string"}}, target_card=True),
-            "required": ["board", "list", "card", "item", "confidence", "reason"],
+            "properties": _op_props_id({"item": {"type": "string"}}),
+            "required": ["id", "item", "confidence", "reason"],
         },
     },
     {
         "name": "move_card",
-        "description": "Propose moving a card to a different list.",
+        "description": "Propose moving a card to a different list on the same board.",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({
+            "properties": _op_props_id({
                 "target_list": {"type": "string", "enum": _LIST_ENUM},
-            }, target_card=True),
-            "required": ["board", "list", "card", "target_list", "confidence", "reason"],
+            }),
+            "required": ["id", "target_list", "confidence", "reason"],
         },
     },
     {
@@ -229,11 +238,20 @@ WRITE_TOOL_DEFS = [
         "description": "Propose updating due, assignee, or labels on an existing card.",
         "input_schema": {
             "type": "object",
-            "properties": _op_props({
+            "properties": _op_props_id({
                 "field": {"type": "string", "enum": ["due", "assignee", "labels"]},
                 "value": {"description": "string for due/assignee, array of strings for labels"},
-            }, target_card=True),
-            "required": ["board", "list", "card", "field", "value", "confidence", "reason"],
+            }),
+            "required": ["id", "field", "value", "confidence", "reason"],
+        },
+    },
+    {
+        "name": "rename_card",
+        "description": "Propose changing a card's title. The id and filename do not change.",
+        "input_schema": {
+            "type": "object",
+            "properties": _op_props_id({"title": {"type": "string"}}),
+            "required": ["id", "title", "confidence", "reason"],
         },
     },
 ]
@@ -466,7 +484,7 @@ def _tool_get_card_by_id(args: dict) -> dict:
 
 _WRITE_OP_NAMES = {
     "create_card", "add_comment", "tick_checklist",
-    "add_checklist_item", "move_card", "update_field",
+    "add_checklist_item", "move_card", "update_field", "rename_card",
 }
 
 
@@ -510,6 +528,8 @@ def _summarize_read_result(name: str, args: dict, payload: dict) -> str:
         return f"{n} match(es) for '{args.get('query', '')}'"
     if name == "read_card":
         return f"{args.get('board','?')}/{args.get('list','?')}/{args.get('slug','?')}"
+    if name == "get_card_by_id":
+        return f"{args.get('id','?')}"
     if name in ("list_overdue", "list_due_today", "list_due_this_week"):
         n = len(payload.get("cards", []))
         return f"{n} card(s)"
@@ -527,17 +547,27 @@ def _queued_summary_fields(name: str, args: dict) -> dict:
     if name == "create_card":
         return {"board": args.get("board", ""), "list": args.get("list", ""),
                 "title": args.get("title", "")}
+    # All other write ops target an existing card by id. Resolve the title
+    # so the UI can show "...on C-12: Demo of DFMEA".
+    cid = args.get("id", "")
+    title = ""
+    if cid:
+        located = _resolve_id(cid)
+        if located is not None:
+            import server
+            board, list_slug = located
+            card = server.read_card(board, list_slug, cid)
+            if card is not None:
+                title = card.get("title", "")
+    base = {"id": cid, "title": title}
     if name == "add_comment":
-        text = args.get("text", "")
-        return {"board": args.get("board", ""), "card": args.get("card", ""),
-                "text": text[:60]}
-    if name in ("tick_checklist", "add_checklist_item"):
-        return {"board": args.get("board", ""), "card": args.get("card", ""),
-                "item": args.get("item", "")}
-    if name == "move_card":
-        return {"board": args.get("board", ""), "card": args.get("card", ""),
-                "target_list": args.get("target_list", "")}
-    if name == "update_field":
-        return {"board": args.get("board", ""), "card": args.get("card", ""),
-                "field": args.get("field", "")}
-    return {}
+        base["text"] = (args.get("text", "") or "")[:60]
+    elif name in ("tick_checklist", "add_checklist_item"):
+        base["item"] = args.get("item", "")
+    elif name == "move_card":
+        base["target_list"] = args.get("target_list", "")
+    elif name == "update_field":
+        base["field"] = args.get("field", "")
+    elif name == "rename_card":
+        base["new_title"] = args.get("title", "")
+    return base

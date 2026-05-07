@@ -188,5 +188,42 @@ class TestGetCardById(unittest.TestCase):
         self.assertEqual(result, {"error": "unknown id: C-99"})
 
 
+class TestWriteToolSchemas(unittest.TestCase):
+    """Verify write tools target cards by id, not by (board, list, card)."""
+
+    def _props(self, tool_name):
+        for t in chat_tools.WRITE_TOOL_DEFS:
+            if t["name"] == tool_name:
+                return t["input_schema"]["properties"], t["input_schema"]["required"]
+        raise AssertionError(f"no tool named {tool_name}")
+
+    def test_add_comment_uses_id(self):
+        props, req = self._props("add_comment")
+        self.assertIn("id", props)
+        self.assertIn("id", req)
+        self.assertNotIn("board", props)
+        self.assertNotIn("card", props)
+
+    def test_tick_checklist_uses_id(self):
+        props, req = self._props("tick_checklist")
+        self.assertIn("id", props)
+        self.assertNotIn("board", props)
+
+    def test_move_card_uses_id(self):
+        props, req = self._props("move_card")
+        self.assertIn("id", props)
+        self.assertNotIn("board", props)
+
+    def test_update_field_uses_id(self):
+        props, req = self._props("update_field")
+        self.assertIn("id", props)
+        self.assertNotIn("board", props)
+
+    def test_add_checklist_item_uses_id(self):
+        props, req = self._props("add_checklist_item")
+        self.assertIn("id", props)
+        self.assertNotIn("board", props)
+
+
 if __name__ == "__main__":
     unittest.main()
