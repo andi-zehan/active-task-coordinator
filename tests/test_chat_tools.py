@@ -67,7 +67,7 @@ class TestListOverdue(BucketToolsBase):
                   card_body("Old", due=past))
         out = chat_tools._tool_list_overdue({})
         self.assertEqual(len(out["cards"]), 1)
-        self.assertEqual(out["cards"][0]["s"], "old-task")
+        self.assertEqual(out["cards"][0]["id"], "old-task")
 
     def test_overdue_done_excluded(self):
         past = (date.today() - timedelta(days=3)).isoformat()

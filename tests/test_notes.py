@@ -312,24 +312,26 @@ class TestReadTools(unittest.TestCase):
     def test_list_cards_filters_by_list(self):
         out = chat_tools._tool_list_cards({"board": "alpha", "list": "backlog"})
         self.assertEqual(len(out["cards"]), 1)
-        self.assertEqual(out["cards"][0]["s"], "draft-spec")
+        self.assertEqual(out["cards"][0]["id"], "draft-spec")
 
     def test_list_cards_unknown_board(self):
         self.assertIn("error", chat_tools._tool_list_cards({"board": "ghost"}))
 
     def test_search_cards_finds_substring(self):
         out = chat_tools._tool_search_cards({"query": "spec"})
-        slugs = [m["s"] for m in out["matches"]]
-        self.assertIn("draft-spec", slugs)
+        ids = [m["id"] for m in out["matches"]]
+        self.assertIn("draft-spec", ids)
 
     def test_read_card_returns_split_checklist(self):
-        out = chat_tools._tool_read_card({"board": "alpha", "list": "backlog", "slug": "draft-spec"})
+        # Register the test card so get_card_by_id can find it
+        server.register_id("draft-spec", "alpha", "backlog")
+        out = chat_tools._tool_get_card_by_id({"id": "draft-spec"})
         self.assertIn("Outline", out["checklist_todo"])
         self.assertIn("Title", out["checklist_done"])
         self.assertEqual(out["title"], "Draft spec")
 
     def test_read_card_missing(self):
-        out = chat_tools._tool_read_card({"board": "alpha", "list": "backlog", "slug": "nope"})
+        out = chat_tools._tool_get_card_by_id({"id": "nope"})
         self.assertIn("error", out)
 
 

@@ -120,19 +120,6 @@ READ_TOOL_DEFS = [
         },
     },
     {
-        "name": "read_card",
-        "description": "Full card: description, checklist with checked state, comments.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "board": {"type": "string"},
-                "list": {"type": "string", "enum": _LIST_ENUM},
-                "slug": {"type": "string"},
-            },
-            "required": ["board", "list", "slug"],
-        },
-    },
-    {
         "name": "list_overdue",
         "description": "List all overdue cards (due date in the past, not in 'done' list). Returns board, list, slug, title, due, assignee, labels.",
         "input_schema": {"type": "object", "properties": {}},
@@ -295,8 +282,8 @@ def _tool_list_cards(args: dict) -> dict:
             if card is None:
                 continue
             entry = {
+                "id": card.get("id", slug),
                 "l": list_slug,
-                "s": slug,
                 "title": card.get("title", ""),
             }
             if card.get("labels"):
@@ -309,10 +296,11 @@ def _tool_list_cards(args: dict) -> dict:
     return {"cards": out}
 
 
-def _all_card_titles() -> list[tuple[str, str, str, str]]:
-    """Return [(board, list, slug, title), ...] for every card."""
+def _all_card_titles() -> list[tuple[str, str, str, str, str]]:
+    """Return [(board, list, id, slug, title), ...] for every card."""
     return [
-        (c.get("board"), c.get("list"), c.get("slug"), c.get("title", ""))
+        (c.get("board"), c.get("list"), c.get("id", c.get("slug")),
+         c.get("slug"), c.get("title", ""))
         for c in _all_cards_with_path()
     ]
 
@@ -321,7 +309,7 @@ def _tool_search_cards(args: dict) -> dict:
     query = args["query"].lower()
     limit = max(1, min(int(args.get("limit", 8)), 25))
     cards = _all_card_titles()
-    titles = [t.lower() for (_b, _l, _s, t) in cards]
+    titles = [t.lower() for (_b, _l, _cid, _s, t) in cards]
     matches = []
     fuzzy = difflib.get_close_matches(query, titles, n=limit, cutoff=0.4)
     seen = set()
@@ -329,8 +317,8 @@ def _tool_search_cards(args: dict) -> dict:
         for i, t in enumerate(titles):
             if t == low_title and i not in seen:
                 seen.add(i)
-                b, l, s, title = cards[i]
-                matches.append({"b": b, "l": l, "s": s, "title": title})
+                b, l, cid, s, title = cards[i]
+                matches.append({"id": cid, "b": b, "l": l, "title": title})
                 break
     for i, t in enumerate(titles):
         if i in seen or query not in t:
@@ -338,27 +326,9 @@ def _tool_search_cards(args: dict) -> dict:
         if len(matches) >= limit:
             break
         seen.add(i)
-        b, l, s, title = cards[i]
-        matches.append({"b": b, "l": l, "s": s, "title": title})
+        b, l, cid, s, title = cards[i]
+        matches.append({"id": cid, "b": b, "l": l, "title": title})
     return {"matches": matches[:limit]}
-
-
-def _tool_read_card(args: dict) -> dict:
-    import server
-    card = server.read_card(args["board"], args["list"], args["slug"])
-    if card is None:
-        return {"error": "card not found"}
-    todo, done = _parse_checklist(card.get("body", ""))
-    return {
-        "title": card.get("title", ""),
-        "labels": card.get("labels") or [],
-        "due": card.get("due", ""),
-        "assignee": card.get("assignee", ""),
-        "description": _extract_description(card.get("body", "")),
-        "checklist_todo": todo,
-        "checklist_done": done,
-        "body": card.get("body", ""),
-    }
 
 
 # --- Bucket / filter read-tool implementations ---
@@ -394,9 +364,9 @@ def _all_cards_with_path() -> list[dict]:
 
 def _summarize_card_for_chat(card: dict) -> dict:
     out = {
+        "id": card.get("id", card.get("slug", "")),
         "b": card.get("board"),
         "l": card.get("list"),
-        "s": card.get("slug"),
         "title": card.get("title", ""),
     }
     if card.get("due"):
@@ -498,7 +468,6 @@ READ_TOOLS = {
     "list_boards": _tool_list_boards,
     "list_cards": _tool_list_cards,
     "search_cards": _tool_search_cards,
-    "read_card": _tool_read_card,
     "list_overdue": _tool_list_overdue,
     "list_due_today": _tool_list_due_today,
     "list_due_this_week": _tool_list_due_this_week,
@@ -526,8 +495,6 @@ def _summarize_read_result(name: str, args: dict, payload: dict) -> str:
     if name == "search_cards":
         n = len(payload.get("matches", []))
         return f"{n} match(es) for '{args.get('query', '')}'"
-    if name == "read_card":
-        return f"{args.get('board','?')}/{args.get('list','?')}/{args.get('slug','?')}"
     if name == "get_card_by_id":
         return f"{args.get('id','?')}"
     if name in ("list_overdue", "list_due_today", "list_due_this_week"):

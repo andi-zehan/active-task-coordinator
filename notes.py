@@ -41,8 +41,8 @@ def build_toc() -> dict:
                 if card is None:
                     continue
                 cards.append({
+                    "id": card.get("id", card_slug),
                     "l": list_slug,
-                    "s": card_slug,
                     "title": card.get("title", ""),
                     "labels": card.get("labels") or [],
                     "due": card.get("due", ""),
@@ -110,20 +110,29 @@ class LLMResponseError(Exception):
 SYSTEM_PROMPT = """You turn meeting notes into kanban card operations using tools.
 
 You will receive:
-1. A board INDEX listing every board and its cards (slug, title, labels, due, assignee).
+1. A board INDEX listing every board and its cards (id, title, labels, due, assignee).
 2. A meeting note.
 
 Workflow:
 - Use search_cards before create_card so you don't duplicate existing work.
-- Use read_card to fetch a card's description, checklist, and comments when you need them to decide what op to propose.
-- Propose ops by calling the write tools (create_card, add_comment, tick_checklist, add_checklist_item, move_card, update_field). These are queued, not executed — the user reviews them before anything is written.
+- Use get_card_by_id to fetch a card's description, checklist, and comments when you need them to decide what op to propose.
+- Propose ops by calling the write tools (create_card, add_comment, tick_checklist, add_checklist_item, move_card, update_field, rename_card). These are queued, not executed — the user reviews them before anything is written.
 - When you have proposed every op the note warrants, call finish with a 1-2 sentence summary.
 
 Rules:
-- Only reference boards, lists, and cards that exist (per the INDEX or read_card).
+- Only reference boards, lists, and cards that exist (per the INDEX or get_card_by_id).
 - For new cards, default to list 'backlog' unless the note clearly implies another stage.
 - confidence: 'high' = explicit, 'med' = strongly implied, 'low' = speculative.
 - reason: cite the specific phrase or fact in the note that motivated the op.
+
+Card IDs:
+- Every card has a global ID like C-12. The INDEX includes each card's id.
+- All write tools (except create_card) target a card by its id, e.g.
+  add_comment(id="C-12", text="..."). The board and list are looked up
+  from the id automatically.
+- Use rename_card(id, title) to change a card's title.
+- Use get_card_by_id(id) to fetch full details (description, checklist, comments)
+  for a specific card.
 
 Writing cards:
 - TITLES are short — the action in 5–8 words, imperative voice, no detail.
