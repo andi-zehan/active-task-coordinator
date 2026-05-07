@@ -1526,6 +1526,18 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: #c1c7d0; border-radius: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Card Links (Wikilinks) ──────────────────────────────────────── */
+.card-link {
+  color: #4A90D9;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.card-link.missing {
+  color: #999;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
 </style>
 </head>
 <body>
@@ -1795,6 +1807,7 @@ const state = {
   modalCard: null,
   sortColumn: 'title',
   sortAsc: true,
+  idIndex: new Map(),  // id -> {title, board, list}
 };
 
 /* ================================================================
@@ -1872,20 +1885,42 @@ function escHtml(str) {
 //   [label](url)            → <a href="url">label</a>
 //   http(s)://… or www.…    → <a href="…">…</a>
 // All non-link content is escaped first, so user content can't inject HTML.
+function indexCards(cards) {
+  if (!Array.isArray(cards)) return;
+  for (const c of cards) {
+    if (c && c.id) {
+      state.idIndex.set(c.id, {
+        title: c.title || '',
+        board: c.board || '',
+        list: c.list || '',
+      });
+    }
+  }
+}
+
 function linkifyHtml(str) {
   if (!str) return '';
   const out = [];
   let i = 0;
-  // Match markdown links OR bare URLs in one pass to keep ordering intact.
-  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+)/g;
+  // Wikilinks first ([[C-N]]), then markdown links, then bare URLs.
+  const re = /\[\[(C-\d+)\]\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+)/g;
   let m;
   while ((m = re.exec(str)) !== null) {
     if (m.index > i) out.push(escHtml(str.slice(i, m.index)));
     if (m[1] !== undefined) {
+      // Wikilink form
+      const id = m[1];
+      const entry = state.idIndex.get(id);
+      if (entry) {
+        out.push(`<a href="#" class="card-link" data-id="${escHtml(id)}">${escHtml(id)}: ${escHtml(entry.title)}</a>`);
+      } else {
+        out.push(`<span class="card-link missing" title="Unknown card">[[${escHtml(id)} ?]]</span>`);
+      }
+    } else if (m[2] !== undefined) {
       // Markdown form
-      out.push(`<a href="${escHtml(m[2])}" target="_blank" rel="noopener noreferrer">${escHtml(m[1])}</a>`);
+      out.push(`<a href="${escHtml(m[3])}" target="_blank" rel="noopener noreferrer">${escHtml(m[2])}</a>`);
     } else {
-      let url = m[3];
+      let url = m[4];
       // Strip trailing punctuation that's almost always sentence punctuation
       let trail = '';
       while (url.length && '.,;:!?)'.includes(url[url.length - 1])) {
@@ -2187,6 +2222,15 @@ async function renderBoard() {
   if (myToken !== _renderBoardToken) return; // a newer render superseded us
 
   container.innerHTML = '';
+
+  // Index all cards from all boards
+  for (const boardData of boardDataList) {
+    if (boardData && boardData.lists) {
+      for (const cards of Object.values(boardData.lists)) {
+        indexCards(cards);
+      }
+    }
+  }
 
   for (let boardIdx = 0; boardIdx < state.boards.length; boardIdx++) {
     const boardInfo = state.boards[boardIdx];
@@ -2605,6 +2649,14 @@ async function renderDashboard() {
   }
   container.innerHTML = '';
 
+  // Index all cards from all buckets
+  indexCards(data.overdue || []);
+  indexCards(data.today || []);
+  indexCards(data.this_week || []);
+  indexCards(data.next_week || []);
+  indexCards(data.later || []);
+  indexCards(data.someday || []);
+
   function groupByBoard(cards) {
     const groups = {};
     for (const c of cards) {
@@ -2834,6 +2886,7 @@ async function renderCalendar() {
   } catch {
     cards = [];
   }
+  indexCards(cards);
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today = new Date();
   const todayStr = today.getFullYear() + '-' +
@@ -3537,6 +3590,7 @@ searchInput.addEventListener('input', () => {
   searchTimeout = setTimeout(async () => {
     try {
       const results = await api.get('/api/search?q=' + encodeURIComponent(q));
+      indexCards(results);
       if (results.length === 0) {
         searchDropdown.innerHTML = '<div class="search-empty">No results found</div>';
       } else {
@@ -3574,6 +3628,17 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.search-wrapper')) {
     searchDropdown.classList.remove('visible');
   }
+});
+
+// Card link (wikilink) handler
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.card-link[data-id]');
+  if (!link) return;
+  e.preventDefault();
+  const id = link.dataset.id;
+  const entry = state.idIndex.get(id);
+  if (!entry) return;
+  openCardModal(entry.board, entry.list, id);
 });
 
 /* ================================================================
