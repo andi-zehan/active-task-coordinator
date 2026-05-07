@@ -594,7 +594,11 @@ a { color: #0052cc; text-decoration: none; }
   font-weight: 500;
   margin-bottom: 6px;
   word-break: break-word;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.card-id-chip { font-size: 11px; color: #888; font-family: monospace; }
 .card .card-meta {
   display: flex;
   align-items: center;
@@ -1143,6 +1147,23 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-size: 12px;
   color: #97a0af;
   margin-bottom: 16px;
+}
+.card-id-chip-modal {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  font-family: monospace;
+  background: #f4f5f7;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.card-id-chip-modal:hover {
+  background: #ebecf0;
+  border-color: #c1c7d0;
 }
 .modal-section {
   margin-bottom: 20px;
@@ -2586,7 +2607,7 @@ function createCardElement(card) {
   const dueHtml = `<span class="card-due ${dueClass}">${due ? formatDate(due) : 'No due-date'}</span>`;
   const metaHtml = `<div class="card-meta">${assigneeHtml}${dueHtml}</div>`;
 
-  cardEl.innerHTML = `${checkHtml}<div class="card-title">${escHtml(card.title)}</div>${metaHtml}`;
+  cardEl.innerHTML = `${checkHtml}<div class="card-title"><span class="card-id-chip">${escHtml(card.id || card.slug)}</span><span>${escHtml(card.title)}</span></div>${metaHtml}`;
 
   cardEl.addEventListener('click', () => {
     const currentBoard = cardEl.dataset.board;
@@ -3181,6 +3202,7 @@ function renderModal(card) {
 
   // Title
   html += `<textarea class="modal-title-input" id="modal-title" rows="1" spellcheck="false">${escHtml(card.title)}</textarea>`;
+  html += `<button class="card-id-chip-modal" id="modal-id-chip" title="Click to copy [[${escHtml(card.id || card.slug)}]]">${escHtml(card.id || card.slug)}</button>`;
   html += `<div class="modal-path">${escHtml(card.board)} / ${formatListName(card.list)}</div>`;
 
   // Fields row (Assignee + Due Date as a 2-column grid)
@@ -3325,6 +3347,15 @@ function renderModal(card) {
       refreshCurrentView();
     }
   });
+
+  // ID chip copy to clipboard
+  const idChip = document.getElementById('modal-id-chip');
+  if (idChip) {
+    idChip.addEventListener('click', () => {
+      navigator.clipboard.writeText(`[[${card.id || card.slug}]]`);
+      flashSaved();
+    });
+  }
 
   // Assignee save on blur
   document.getElementById('modal-assignee').addEventListener('blur', async (e) => {
@@ -3672,7 +3703,7 @@ searchInput.addEventListener('input', () => {
       } else {
         searchDropdown.innerHTML = results.map(r => `
           <div class="search-result" data-board="${escHtml(r.board)}" data-list="${escHtml(r.list)}" data-card="${escHtml(r.slug)}">
-            <div class="sr-title">${escHtml(r.title)}</div>
+            <div class="sr-title"><span class="card-id-chip">${escHtml(r.id || r.slug)}</span> ${escHtml(r.title)}</div>
             <div class="sr-meta">${escHtml(r.board)} / ${formatListName(r.list)}${r.assignee ? ' &middot; ' + escHtml(r.assignee) : ''}</div>
           </div>
         `).join('');
