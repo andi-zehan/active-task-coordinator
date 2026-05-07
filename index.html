@@ -1761,15 +1761,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <span id="sync-status-msg" style="font-size:13px;"></span>
       </div>
 
-      <hr style="border:none;border-top:1px solid #dfe1e6;margin:16px 0;" />
-      <h2 style="margin-top:0;">Migrate to card IDs</h2>
-      <p style="font-size:13px;color:#5e6c84;margin-bottom:12px;">One-time migration: assign global IDs (C-1, C-2, ...) to existing cards and convert path-based relations.</p>
-      <div class="modal-actions" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <button id="migrate-ids-btn" class="header-btn">Run migration</button>
-        <span id="migrate-ids-status" style="font-size:13px;"></span>
-      </div>
-      <pre id="migrate-ids-output" style="display:none;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:10px;max-height:200px;overflow-y:auto;font-size:12px;color:#42526e;"></pre>
-
       <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
         <button id="btn-cfg-cancel" class="header-btn">Cancel</button>
         <button id="btn-cfg-save" class="btn-new-card">Save</button>
@@ -4060,27 +4051,6 @@ document.getElementById('btn-sync-pull').addEventListener('click', async () => {
       (r.status === 'ok' ? '✓ ' : '✗ ') + (r.message || r.status);
   } catch (err) {
     cfgEls.syncStatusMsg.textContent = '✗ ' + err.message;
-  }
-});
-
-document.getElementById('migrate-ids-btn').addEventListener('click', async () => {
-  if (!confirm('This will rename every card file to its new ID and convert relations. Continue?')) return;
-  const btn = document.getElementById('migrate-ids-btn');
-  const out = document.getElementById('migrate-ids-output');
-  const status = document.getElementById('migrate-ids-status');
-  btn.disabled = true;
-  out.style.display = 'block';
-  out.textContent = 'Running...';
-  status.textContent = '';
-  try {
-    const result = await api.post('/api/migrate/assign-ids', {});
-    out.textContent = JSON.stringify(result, null, 2);
-    status.textContent = '✓ Migration complete';
-  } catch (e) {
-    out.textContent = 'Error: ' + (e.message || String(e));
-    status.textContent = '✗ Migration failed';
-  } finally {
-    btn.disabled = false;
   }
 });
 

@@ -822,43 +822,5 @@ class TestChatEndpoint(unittest.TestCase):
         self.assertIn("messages", body.get("error", ""))
 
 
-class TestMigrationEndpoint(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.tmp = tempfile.mkdtemp()
-        cls.orig_data_dir = server.DATA_DIR
-        server.DATA_DIR = Path(cls.tmp) / "data"
-        server.ensure_data_dir()
-        cls.server = HTTPServer(('127.0.0.1', 8092), server.RequestHandler)
-        cls.thread = threading.Thread(target=cls.server.serve_forever)
-        cls.thread.daemon = True
-        cls.thread.start()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.server.shutdown()
-        server.DATA_DIR = cls.orig_data_dir
-        shutil.rmtree(cls.tmp)
-
-    def setUp(self):
-        if server.DATA_DIR.exists():
-            shutil.rmtree(server.DATA_DIR)
-        server.ensure_data_dir()
-        server.reset_id_index()
-
-    def test_migrate_returns_summary(self):
-        # Seed one legacy card.
-        server.write_board_meta("b", {"name": "B", "color": "#000"})
-        list_dir = server.DATA_DIR / "boards" / "b" / "ideas"
-        (list_dir / "alpha.md").write_text(
-            "---\ntitle: Alpha\nrelations: []\n---\n", encoding="utf-8")
-        (list_dir / "_order.json").write_text('["alpha"]', encoding="utf-8")
-
-        status, data = make_request_port(8092, 'POST', '/api/migrate/assign-ids')
-        self.assertEqual(status, 200)
-        self.assertEqual(data["cards_migrated"], 1)
-        self.assertIn("duration_ms", data)
-
-
 if __name__ == '__main__':
     unittest.main()

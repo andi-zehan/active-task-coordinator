@@ -542,10 +542,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/janitor/run' and method == 'POST':
             return self._handle_janitor_run()
 
-        # /api/migrate/assign-ids
-        if path == '/api/migrate/assign-ids' and method == 'POST':
-            return self._handle_migrate_assign_ids()
-
         # Static files (GET only)
         if method == 'GET':
             base = Path(__file__).parent
@@ -1119,23 +1115,6 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _handle_janitor_run(self):
         result = janitor.run_all()
         self._send_json(result)
-
-    def _handle_migrate_assign_ids(self):
-        # Refuse if data/ has uncommitted changes (only if it's a git repo).
-        if (DATA_DIR / '.git').exists():
-            try:
-                r = subprocess.run(['git', 'status', '--porcelain'],
-                                   capture_output=True, text=True,
-                                   cwd=DATA_DIR, timeout=10)
-                if r.stdout.strip():
-                    return self._send_error(409,
-                        'data/ has uncommitted changes — commit or stash first')
-            except Exception:
-                pass  # if git fails, allow the migration
-        import migration
-        result = migration.assign_ids()
-        self._send_json(result)
-
 
 if __name__ == '__main__':
     # First-run migration: derive default config from existing data/ state.
