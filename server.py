@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import subprocess
+import threading
 from datetime import datetime, date, timedelta
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -71,6 +72,88 @@ def slugify(title):
     slug = re.sub(r'[\s_]+', '-', slug)
     slug = re.sub(r'-+', '-', slug)
     return slug.strip('-')
+
+
+_ID_LOCK = threading.Lock()
+_ID_INDEX: dict[str, tuple[str, str]] | None = None  # id -> (board, list)
+_NEXT_ID_COUNTER: int = 0
+
+
+def _scan_id_index() -> tuple[dict[str, tuple[str, str]], int]:
+    """Walk all cards once and return (id -> (board, list), max_id_int)."""
+    index: dict[str, tuple[str, str]] = {}
+    max_n = 0
+    boards_dir = DATA_DIR / "boards"
+    if not boards_dir.exists():
+        return index, max_n
+    for board_dir in boards_dir.iterdir():
+        if not board_dir.is_dir():
+            continue
+        for list_name in LISTS:
+            list_dir = board_dir / list_name
+            if not list_dir.exists():
+                continue
+            for f in list_dir.glob("*.md"):
+                text = f.read_text(encoding="utf-8")
+                meta, _ = parse_frontmatter(text)
+                cid = meta.get("id")
+                if not cid:
+                    continue
+                index[cid] = (board_dir.name, list_name)
+                m = re.match(r"^C-(\d+)$", cid)
+                if m:
+                    n = int(m.group(1))
+                    if n > max_n:
+                        max_n = n
+    return index, max_n
+
+
+def _ensure_id_index() -> None:
+    global _ID_INDEX, _NEXT_ID_COUNTER
+    if _ID_INDEX is None:
+        _ID_INDEX, _NEXT_ID_COUNTER = _scan_id_index()
+
+
+def reset_id_index() -> None:
+    """Force re-scan on next access. Used by tests and after migration."""
+    global _ID_INDEX, _NEXT_ID_COUNTER
+    with _ID_LOCK:
+        _ID_INDEX = None
+        _NEXT_ID_COUNTER = 0
+
+
+def next_id() -> str:
+    """Allocate the next free ID. Caller must register it after writing the card."""
+    global _NEXT_ID_COUNTER
+    with _ID_LOCK:
+        _ensure_id_index()
+        _NEXT_ID_COUNTER += 1
+        return f"C-{_NEXT_ID_COUNTER}"
+
+
+def resolve_id(card_id: str) -> tuple[str, str] | None:
+    """Return (board, list) for the given id, or None if unknown."""
+    with _ID_LOCK:
+        _ensure_id_index()
+        return _ID_INDEX.get(card_id)
+
+
+def register_id(card_id: str, board: str, list_slug: str) -> None:
+    with _ID_LOCK:
+        _ensure_id_index()
+        _ID_INDEX[card_id] = (board, list_slug)
+        m = re.match(r"^C-(\d+)$", card_id)
+        if m:
+            n = int(m.group(1))
+            global _NEXT_ID_COUNTER
+            if n > _NEXT_ID_COUNTER:
+                _NEXT_ID_COUNTER = n
+
+
+def unregister_id(card_id: str) -> None:
+    with _ID_LOCK:
+        _ensure_id_index()
+        _ID_INDEX.pop(card_id, None)
 
 
 def parse_frontmatter(text):

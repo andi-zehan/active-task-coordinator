@@ -117,6 +117,65 @@ class TestFrontmatter(unittest.TestCase):
         self.assertEqual(body, original_body)
 
 
+class TestIdIndex(unittest.TestCase):
+    """Test the id-index and next-id allocator."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.orig_data_dir = server.DATA_DIR
+        server.DATA_DIR = Path(self.tmp) / "data"
+        server.ensure_data_dir()
+        server.reset_id_index()
+
+    def tearDown(self):
+        server.DATA_DIR = self.orig_data_dir
+        shutil.rmtree(self.tmp)
+
+    def _write_card_with_id(self, board, list_slug, card_slug, card_id):
+        server.write_board_meta(board, {"name": board, "color": "#000"})
+        meta = {
+            "id": card_id, "title": card_slug, "labels": [], "due": "",
+            "assignee": "", "created": "2026-05-07", "updated": "2026-05-07",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }
+        server.write_card(board, list_slug, card_slug, meta, "## Description\n\n")
+        order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+        order = server.read_json(order_path) or []
+        if card_slug not in order:
+            order.append(card_slug)
+        server.write_json(order_path, order)
+
+    def test_next_id_empty_repo(self):
+        self.assertEqual(server.next_id(), "C-1")
+
+    def test_next_id_after_one_card(self):
+        self._write_card_with_id("b", "ideas", "C-5", "C-5")
+        server.reset_id_index()
+        self.assertEqual(server.next_id(), "C-6")
+
+    def test_next_id_increments_within_session(self):
+        self.assertEqual(server.next_id(), "C-1")
+        self.assertEqual(server.next_id(), "C-2")
+        self.assertEqual(server.next_id(), "C-3")
+
+    def test_index_locates_card(self):
+        self._write_card_with_id("b", "backlog", "C-7", "C-7")
+        server.reset_id_index()
+        self.assertEqual(server.resolve_id("C-7"), ("b", "backlog"))
+
+    def test_index_returns_none_for_missing_id(self):
+        self.assertIsNone(server.resolve_id("C-99"))
+
+    def test_register_id_updates_index(self):
+        server.register_id("C-42", "x", "ideas")
+        self.assertEqual(server.resolve_id("C-42"), ("x", "ideas"))
+
+    def test_unregister_id_removes_from_index(self):
+        server.register_id("C-42", "x", "ideas")
+        server.unregister_id("C-42")
+        self.assertIsNone(server.resolve_id("C-42"))
+
+
 class TestDataLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
