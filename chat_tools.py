@@ -5,6 +5,18 @@ Used by both Process Notes (notes.py) and the Chat sidebar (chat.py).
 import difflib
 import json
 import re
+import threading
+
+
+# Thread-local cache so repeated read tools within one request batch don't
+# re-walk every board file. Server is multi-threaded (ThreadingHTTPServer),
+# so a module-level cache would leak across concurrent requests.
+_cache = threading.local()
+
+
+def reset_read_cache() -> None:
+    """Clear the per-batch read cache. Call before each batch of tool calls."""
+    _cache.all_cards = None
 
 
 _LIST_ENUM = ["ideas", "backlog", "in-progress", "done"]
@@ -255,35 +267,27 @@ def _tool_list_cards(args: dict) -> dict:
             card = server.read_card(board, list_slug, slug)
             if card is None:
                 continue
-            out.append({
+            entry = {
                 "l": list_slug,
                 "s": slug,
                 "title": card.get("title", ""),
-                "labels": card.get("labels") or [],
-                "due": card.get("due", ""),
-                "assignee": card.get("assignee", ""),
-            })
+            }
+            if card.get("labels"):
+                entry["labels"] = card["labels"]
+            if card.get("due"):
+                entry["due"] = card["due"]
+            if card.get("assignee"):
+                entry["assignee"] = card["assignee"]
+            out.append(entry)
     return {"cards": out}
 
 
 def _all_card_titles() -> list[tuple[str, str, str, str]]:
     """Return [(board, list, slug, title), ...] for every card."""
-    import server
-    out = []
-    boards_order_path = server.DATA_DIR / "_boards-order.json"
-    if not boards_order_path.exists():
-        return out
-    for board in json.loads(boards_order_path.read_text(encoding="utf-8")):
-        for list_slug in server.LISTS:
-            order = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
-            if not order.exists():
-                continue
-            for slug in json.loads(order.read_text(encoding="utf-8")):
-                card = server.read_card(board, list_slug, slug)
-                if card is None:
-                    continue
-                out.append((board, list_slug, slug, card.get("title", "")))
-    return out
+    return [
+        (c.get("board"), c.get("list"), c.get("slug"), c.get("title", ""))
+        for c in _all_cards_with_path()
+    ]
 
 
 def _tool_search_cards(args: dict) -> dict:
@@ -333,11 +337,19 @@ def _tool_read_card(args: dict) -> dict:
 # --- Bucket / filter read-tool implementations ---
 
 def _all_cards_with_path() -> list[dict]:
-    """Return every card (full record incl. board/list/slug) across all boards."""
+    """Return every card (full record incl. board/list/slug) across all boards.
+
+    Cached per-batch via reset_read_cache() so back-to-back tool calls in one
+    LLM turn don't re-walk the filesystem.
+    """
+    cached = getattr(_cache, "all_cards", None)
+    if cached is not None:
+        return cached
     import server
     out = []
     boards_order_path = server.DATA_DIR / "_boards-order.json"
     if not boards_order_path.exists():
+        _cache.all_cards = out
         return out
     for board in json.loads(boards_order_path.read_text(encoding="utf-8")):
         for list_slug in server.LISTS:
@@ -349,19 +361,24 @@ def _all_cards_with_path() -> list[dict]:
                 if card is None:
                     continue
                 out.append(card)
+    _cache.all_cards = out
     return out
 
 
 def _summarize_card_for_chat(card: dict) -> dict:
-    return {
+    out = {
         "b": card.get("board"),
         "l": card.get("list"),
         "s": card.get("slug"),
         "title": card.get("title", ""),
-        "due": card.get("due", ""),
-        "assignee": card.get("assignee", ""),
-        "labels": card.get("labels") or [],
     }
+    if card.get("due"):
+        out["due"] = card["due"]
+    if card.get("assignee"):
+        out["assignee"] = card["assignee"]
+    if card.get("labels"):
+        out["labels"] = card["labels"]
+    return out
 
 
 def _bucketed_card_summaries(bucket_name: str) -> list[dict]:

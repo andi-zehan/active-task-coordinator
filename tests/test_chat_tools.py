@@ -53,6 +53,7 @@ class BucketToolsBase(unittest.TestCase):
         server.DATA_DIR = self.data_dir
         (self.data_dir / "_boards-order.json").write_text("[]", encoding="utf-8")
         make_board(self.data_dir, "alpha")
+        chat_tools.reset_read_cache()
 
     def tearDown(self):
         self.tmp.cleanup()

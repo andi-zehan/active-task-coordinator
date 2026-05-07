@@ -9,7 +9,7 @@ import server
 from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
     _WRITE_OP_NAMES, _queue_op,
-    _summarize_read_result, _queued_summary_fields,
+    _summarize_read_result, _queued_summary_fields, reset_read_cache,
 )
 
 NOTES_DIR = Path(__file__).parent / "notes"
@@ -463,6 +463,7 @@ def analyze_stream(body: str, title: str, *, model: str, client,
 
     for turn in range(1, max_turns + 1):
         yield {"type": "turn", "n": turn}
+        reset_read_cache()
         response = client.messages.create(
             model=model,
             max_tokens=4096,

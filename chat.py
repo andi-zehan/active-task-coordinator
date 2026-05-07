@@ -11,7 +11,7 @@ import json
 from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
     _WRITE_OP_NAMES, _queue_op,
-    _summarize_read_result,
+    _summarize_read_result, reset_read_cache,
 )
 
 
@@ -82,6 +82,7 @@ def chat_stream(messages: list, *, model: str, client,
 
     for turn in range(1, max_turns + 1):
         yield {"type": "turn", "n": turn}
+        reset_read_cache()
         response = client.messages.create(
             model=model,
             max_tokens=4096,
