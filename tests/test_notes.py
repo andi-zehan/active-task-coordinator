@@ -366,28 +366,45 @@ class TestApply(unittest.TestCase):
         self.assertIn(card_id, order)
 
     def test_apply_add_comment(self):
-        make_card(self.data_dir, "alpha", "in-progress", "do-stuff",
-            "---\ntitle: Do stuff\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
-            "## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n")
-        ops = [{"op": "add_comment", "board": "alpha", "list": "in-progress",
-                "card": "do-stuff", "text": "Vendor confirmed pricing."}]
+        # Use the id-based pattern: seed with next_id
+        server.reset_id_index()
+        cid = server.next_id()
+        server.write_card("alpha", "in-progress", cid, {
+            "id": cid, "title": "Do stuff", "labels": [], "due": "",
+            "assignee": "", "created": "2026-04-20", "updated": "2026-04-20",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        order_path = self.data_dir / "boards" / "alpha" / "in-progress" / "_order.json"
+        order = json.loads(order_path.read_text()) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(cid, "alpha", "in-progress")
+
+        ops = [{"op": "add_comment", "id": cid, "text": "Vendor confirmed pricing."}]
         result = notes.apply_operations(ops, self.note_id)
         self.assertEqual(len(result["applied"]), 1)
-        card = server.read_card("alpha", "in-progress", "do-stuff")
+        card = server.read_card("alpha", "in-progress", cid)
         self.assertIn("Vendor confirmed pricing.", card["body"])
         self.assertIn(self.note_id, card["body"])  # source link in comment
 
     def test_apply_tick_checklist(self):
-        make_card(self.data_dir, "alpha", "backlog", "task",
-            "---\ntitle: T\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
-            "## Description\n\n\n\n"
-            "## Checklist\n\n- [ ] Confirm hotel\n- [ ] Book flight\n\n\n"
-            "## Comments\n\n")
-        ops = [{"op": "tick_checklist", "board": "alpha", "list": "backlog",
-                "card": "task", "item": "hotel"}]
+        server.reset_id_index()
+        cid = server.next_id()
+        server.write_card("alpha", "backlog", cid, {
+            "id": cid, "title": "T", "labels": [], "due": "",
+            "assignee": "", "created": "2026-04-20", "updated": "2026-04-20",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\n\n## Checklist\n\n- [ ] Confirm hotel\n- [ ] Book flight\n\n\n## Comments\n\n")
+        order_path = self.data_dir / "boards" / "alpha" / "backlog" / "_order.json"
+        order = json.loads(order_path.read_text()) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(cid, "alpha", "backlog")
+
+        ops = [{"op": "tick_checklist", "id": cid, "item": "hotel"}]
         result = notes.apply_operations(ops, self.note_id)
         self.assertEqual(len(result["applied"]), 1)
-        card = server.read_card("alpha", "backlog", "task")
+        card = server.read_card("alpha", "backlog", cid)
         self.assertIn("- [x] Confirm hotel", card["body"])
         self.assertIn("- [ ] Book flight", card["body"])
 
@@ -410,15 +427,24 @@ class TestApply(unittest.TestCase):
         self.assertEqual(len(result["skipped"]), 1)
 
     def test_apply_move_card(self):
-        make_card(self.data_dir, "alpha", "backlog", "movable",
-            "---\ntitle: M\ncreated: 2026-04-20\nupdated: 2026-04-20\n---\n\n"
-            "## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n")
-        ops = [{"op": "move_card", "board": "alpha", "list": "backlog",
-                "card": "movable", "target_list": "in-progress"}]
+        server.reset_id_index()
+        cid = server.next_id()
+        server.write_card("alpha", "backlog", cid, {
+            "id": cid, "title": "M", "labels": [], "due": "",
+            "assignee": "", "created": "2026-04-20", "updated": "2026-04-20",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        order_path = self.data_dir / "boards" / "alpha" / "backlog" / "_order.json"
+        order = json.loads(order_path.read_text()) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(cid, "alpha", "backlog")
+
+        ops = [{"op": "move_card", "id": cid, "target_list": "in-progress"}]
         result = notes.apply_operations(ops, self.note_id)
         self.assertEqual(len(result["applied"]), 1)
-        self.assertIsNone(server.read_card("alpha", "backlog", "movable"))
-        self.assertIsNotNone(server.read_card("alpha", "in-progress", "movable"))
+        self.assertIsNone(server.read_card("alpha", "backlog", cid))
+        self.assertIsNotNone(server.read_card("alpha", "in-progress", cid))
 
     def test_apply_records_in_note_frontmatter(self):
         ops = [{"op": "create_card", "board": "alpha", "list": "backlog", "title": "X"}]
@@ -453,33 +479,50 @@ class TestApply(unittest.TestCase):
 
     def test_apply_move_then_update_follows_card(self):
         # Regression: when a batch moves a card and then updates it, the
-        # update used to look at the card's OLD location and skip.
-        make_card(self.data_dir, "alpha", "backlog", "task",
-                  "---\ntitle: T\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
-                  "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        # update should find it via the id-index at its new location.
+        server.reset_id_index()
+        cid = server.next_id()
+        server.write_card("alpha", "backlog", cid, {
+            "id": cid, "title": "T", "labels": [], "due": "",
+            "assignee": "", "created": "2026-01-01", "updated": "2026-01-01",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        order_path = self.data_dir / "boards" / "alpha" / "backlog" / "_order.json"
+        order = json.loads(order_path.read_text()) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(cid, "alpha", "backlog")
+
         ops = [
-            {"op": "move_card", "board": "alpha", "list": "backlog",
-             "card": "task", "target_list": "ideas"},
-            {"op": "update_field", "board": "alpha", "list": "backlog",
-             "card": "task", "field": "assignee", "value": "Andi"},
+            {"op": "move_card", "id": cid, "target_list": "ideas"},
+            {"op": "update_field", "id": cid, "field": "assignee", "value": "Andi"},
         ]
         result = notes.apply_operations(ops, None)
         self.assertEqual(len(result["applied"]), 2, msg=str(result))
         self.assertEqual(result["skipped"], [])
-        moved = server.read_card("alpha", "ideas", "task")
+        moved = server.read_card("alpha", "ideas", cid)
         self.assertIsNotNone(moved)
         self.assertEqual(moved["assignee"], "Andi")
 
     def test_apply_with_no_note_id_skips_comment_link(self):
         # Pre-create a card to comment on.
-        make_card(self.data_dir, "alpha", "backlog", "target",
-                  "---\ntitle: T\ncreated: 2026-01-01\nupdated: 2026-01-01\n---\n\n"
-                  "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
-        ops = [{"op": "add_comment", "board": "alpha", "list": "backlog",
-                "card": "target", "text": "from chat"}]
+        server.reset_id_index()
+        cid = server.next_id()
+        server.write_card("alpha", "backlog", cid, {
+            "id": cid, "title": "T", "labels": [], "due": "",
+            "assignee": "", "created": "2026-01-01", "updated": "2026-01-01",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\n\n## Checklist\n\n\n## Comments\n\n")
+        order_path = self.data_dir / "boards" / "alpha" / "backlog" / "_order.json"
+        order = json.loads(order_path.read_text()) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(cid, "alpha", "backlog")
+
+        ops = [{"op": "add_comment", "id": cid, "text": "from chat"}]
         result = notes.apply_operations(ops, None)
         self.assertEqual(len(result["applied"]), 1)
-        card = server.read_card("alpha", "backlog", "target")
+        card = server.read_card("alpha", "backlog", cid)
         self.assertIn("from chat", card["body"])
         # No "from [meeting note]" link when note_id is None.
         self.assertNotIn("from [meeting note]", card["body"])
@@ -494,6 +537,76 @@ class TestApply(unittest.TestCase):
         self.assertTrue(result["applied"][0]["target"].endswith("/C-1"))
         path = self.data_dir / "boards" / "alpha" / "ideas" / "C-1.md"
         self.assertTrue(path.exists())
+
+
+class TestApplyOpsById(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.orig_data_dir = server.DATA_DIR
+        server.DATA_DIR = Path(self.tmp) / "data"
+        server.ensure_data_dir()
+        server.reset_id_index()
+        server.write_board_meta("b", {"name": "B", "color": "#000"})
+
+    def tearDown(self):
+        server.DATA_DIR = self.orig_data_dir
+        shutil.rmtree(self.tmp)
+
+    def _seed_card(self, list_slug="ideas", title="t", body="## Description\n\n\n## Checklist\n\n- [ ] foo\n\n## Comments\n\n"):
+        cid = server.next_id()
+        server.write_card("b", list_slug, cid, {
+            "id": cid, "title": title, "labels": [], "due": "",
+            "assignee": "", "created": "2026-05-07", "updated": "2026-05-07",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, body)
+        order_path = server.DATA_DIR / "boards" / "b" / list_slug / "_order.json"
+        order = json.loads(order_path.read_text(encoding="utf-8")) if order_path.exists() else []
+        order.append(cid)
+        order_path.write_text(json.dumps(order, indent=2), encoding="utf-8")
+        server.register_id(cid, "b", list_slug)
+        return cid
+
+    def test_add_comment_by_id(self):
+        cid = self._seed_card()
+        result = notes.apply_operations(
+            [{"op": "add_comment", "id": cid, "text": "hello"}], note_id="")
+        self.assertEqual(len(result["applied"]), 1)
+        self.assertEqual(len(result["skipped"]), 0)
+
+    def test_move_card_by_id(self):
+        cid = self._seed_card()
+        result = notes.apply_operations(
+            [{"op": "move_card", "id": cid, "target_list": "backlog"}], note_id="")
+        self.assertEqual(len(result["applied"]), 1)
+        # File now in backlog/, gone from ideas/
+        self.assertTrue((server.DATA_DIR / "boards" / "b" / "backlog" / f"{cid}.md").exists())
+        self.assertFalse((server.DATA_DIR / "boards" / "b" / "ideas" / f"{cid}.md").exists())
+
+    def test_rename_card_by_id(self):
+        cid = self._seed_card(title="Old")
+        result = notes.apply_operations(
+            [{"op": "rename_card", "id": cid, "title": "New"}], note_id="")
+        self.assertEqual(len(result["applied"]), 1)
+        # Same file, new title.
+        card = server.read_card("b", "ideas", cid)
+        self.assertEqual(card["title"], "New")
+
+    def test_unknown_id_skipped(self):
+        result = notes.apply_operations(
+            [{"op": "add_comment", "id": "C-99", "text": "x"}], note_id="")
+        self.assertEqual(len(result["applied"]), 0)
+        self.assertEqual(len(result["skipped"]), 1)
+
+    def test_move_then_update_follows_relocation(self):
+        cid = self._seed_card()
+        ops = [
+            {"op": "move_card", "id": cid, "target_list": "in-progress"},
+            {"op": "update_field", "id": cid, "field": "assignee", "value": "Alice"},
+        ]
+        result = notes.apply_operations(ops, note_id="")
+        self.assertEqual(len(result["applied"]), 2)
+        card = server.read_card("b", "in-progress", cid)
+        self.assertEqual(card["assignee"], "Alice")
 
 
 if __name__ == "__main__":

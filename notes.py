@@ -217,6 +217,18 @@ def _build_card_body(description: str, checklist: list[str]) -> str:
     )
 
 
+def _locate(op: dict) -> tuple[str, str, str]:
+    """Resolve an id-based op to (board, list, id). Raises ValueError if unknown."""
+    cid = op.get("id")
+    if not cid:
+        raise ValueError("op missing 'id'")
+    located = server.resolve_id(cid)
+    if located is None:
+        raise ValueError(f"unknown id: {cid}")
+    board, list_slug = located
+    return board, list_slug, cid
+
+
 def _do_create_card(op: dict, note_id: str) -> dict:
     board = op["board"]
     list_slug = op["list"]
@@ -250,8 +262,8 @@ def _do_create_card(op: dict, note_id: str) -> dict:
 
 
 def _do_add_comment(op: dict, note_id: str) -> dict:
-    board, list_slug, card_slug = op["board"], op["list"], op["card"]
-    card = server.read_card(board, list_slug, card_slug)
+    board, list_slug, card_id = _locate(op)
+    card = server.read_card(board, list_slug, card_id)
     if card is None:
         raise ValueError("target card missing")
     body = card["body"]
@@ -263,13 +275,13 @@ def _do_add_comment(op: dict, note_id: str) -> dict:
         new_comment = f"\n**{today} - Agent:**\n{op['text']}\n"
     body = body.rstrip() + "\n" + new_comment
     card["updated"] = today
-    server.write_card(board, list_slug, card_slug, card, body)
-    return {"target": f"{board}/{list_slug}/{card_slug}"}
+    server.write_card(board, list_slug, card_id, card, body)
+    return {"target": f"{board}/{list_slug}/{card_id}"}
 
 
 def _do_tick_checklist(op: dict, note_id: str) -> dict:
-    board, list_slug, card_slug = op["board"], op["list"], op["card"]
-    card = server.read_card(board, list_slug, card_slug)
+    board, list_slug, card_id = _locate(op)
+    card = server.read_card(board, list_slug, card_id)
     if card is None:
         raise ValueError("target card missing")
     needle = op["item"].lower()
@@ -285,13 +297,13 @@ def _do_tick_checklist(op: dict, note_id: str) -> dict:
     if not matched:
         raise ValueError("checklist item not found")
     card["updated"] = _today_iso()
-    server.write_card(board, list_slug, card_slug, card, "\n".join(new_lines))
-    return {"target": f"{board}/{list_slug}/{card_slug}"}
+    server.write_card(board, list_slug, card_id, card, "\n".join(new_lines))
+    return {"target": f"{board}/{list_slug}/{card_id}"}
 
 
 def _do_add_checklist_item(op: dict, note_id: str) -> dict:
-    board, list_slug, card_slug = op["board"], op["list"], op["card"]
-    card = server.read_card(board, list_slug, card_slug)
+    board, list_slug, card_id = _locate(op)
+    card = server.read_card(board, list_slug, card_id)
     if card is None:
         raise ValueError("target card missing")
     new_lines = []
@@ -313,43 +325,52 @@ def _do_add_checklist_item(op: dict, note_id: str) -> dict:
     if not inserted:
         raise ValueError("no checklist section found")
     card["updated"] = _today_iso()
-    server.write_card(board, list_slug, card_slug, card, "\n".join(new_lines))
-    return {"target": f"{board}/{list_slug}/{card_slug}"}
+    server.write_card(board, list_slug, card_id, card, "\n".join(new_lines))
+    return {"target": f"{board}/{list_slug}/{card_id}"}
 
 
 def _do_move_card(op: dict, note_id: str) -> dict:
-    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    board, list_slug, card_id = _locate(op)
     target = op["target_list"]
     if target not in server.LISTS:
         raise ValueError(f"invalid target_list '{target}'")
-    card = server.read_card(board, list_slug, card_slug)
+    card = server.read_card(board, list_slug, card_id)
     if card is None:
         raise ValueError("target card missing")
     today = _today_iso()
-    src = server.DATA_DIR / "boards" / board / list_slug / f"{card_slug}.md"
-    dst_dir = server.DATA_DIR / "boards" / board / target
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / f"{card_slug}.md"
+    src = server.DATA_DIR / "boards" / board / list_slug / f"{card_id}.md"
     card["updated"] = today
-    server.write_card(board, target, card_slug, card, card["body"])
+    server.write_card(board, target, card_id, card, card["body"])
     src.unlink(missing_ok=True)
-    _remove_from_order(board, list_slug, card_slug)
-    _append_to_order(board, target, card_slug)
-    return {"target": f"{board}/{target}/{card_slug}"}
+    _remove_from_order(board, list_slug, card_id)
+    _append_to_order(board, target, card_id)
+    server.register_id(card_id, board, target)  # update index
+    return {"target": f"{board}/{target}/{card_id}"}
 
 
 def _do_update_field(op: dict, note_id: str) -> dict:
-    board, list_slug, card_slug = op["board"], op["list"], op["card"]
+    board, list_slug, card_id = _locate(op)
     field = op["field"]
     if field not in ("due", "assignee", "labels"):
         raise ValueError(f"field '{field}' not updatable")
-    card = server.read_card(board, list_slug, card_slug)
+    card = server.read_card(board, list_slug, card_id)
     if card is None:
         raise ValueError("target card missing")
     card[field] = op["value"]
     card["updated"] = _today_iso()
-    server.write_card(board, list_slug, card_slug, card, card["body"])
-    return {"target": f"{board}/{list_slug}/{card_slug}"}
+    server.write_card(board, list_slug, card_id, card, card["body"])
+    return {"target": f"{board}/{list_slug}/{card_id}"}
+
+
+def _do_rename_card(op: dict, note_id: str) -> dict:
+    board, list_slug, card_id = _locate(op)
+    card = server.read_card(board, list_slug, card_id)
+    if card is None:
+        raise ValueError("target card missing")
+    card["title"] = op["title"]
+    card["updated"] = _today_iso()
+    server.write_card(board, list_slug, card_id, card, card["body"])
+    return {"target": f"{board}/{list_slug}/{card_id}"}
 
 
 _HANDLERS = {
@@ -359,6 +380,7 @@ _HANDLERS = {
     "add_checklist_item": _do_add_checklist_item,
     "move_card": _do_move_card,
     "update_field": _do_update_field,
+    "rename_card": _do_rename_card,
 }
 
 
@@ -380,43 +402,22 @@ def _record_in_note(note_id: str, op: dict, target: str) -> None:
 def apply_operations(operations: list[dict], note_id: str) -> dict:
     """Run each operation. Skip ones whose target is gone. Always continue.
 
-    When an op moves a card, subsequent ops in the same batch that reference
-    that card by its *old* (board, list, slug) get rewritten to follow it.
-    Otherwise a "move A then assign A" pair would skip the assign because
-    the card is no longer at the old list when assign runs.
+    A move_card updates the in-memory id-index so subsequent ops in the same
+    batch automatically resolve to the new (board, list).
     """
     applied = []
     skipped = []
-    # (board, list, card) → (board, list, card) after a prior move
-    relocated: dict = {}
-
-    def follow(op: dict) -> dict:
-        if "card" not in op:
-            return op
-        key = (op.get("board"), op.get("list"), op.get("card"))
-        if key not in relocated:
-            return op
-        new_b, new_l, new_c = relocated[key]
-        op = dict(op)
-        op["board"], op["list"], op["card"] = new_b, new_l, new_c
-        return op
 
     for op in operations:
         handler = _HANDLERS.get(op.get("op"))
         if handler is None:
             skipped.append({"op": op, "reason": f"unknown op '{op.get('op')}'"})
             continue
-        op = follow(op)
         try:
             outcome = handler(op, note_id)
             applied.append({"op": op["op"], "target": outcome["target"]})
             if note_id:
                 _record_in_note(note_id, op, outcome["target"])
-            if op["op"] == "move_card":
-                # Record the relocation so later ops in this batch follow.
-                parts = outcome["target"].split("/", 2)
-                if len(parts) == 3:
-                    relocated[(op["board"], op["list"], op["card"])] = tuple(parts)
         except (ValueError, KeyError, FileNotFoundError) as e:
             skipped.append({"op": op, "reason": str(e)})
     return {"applied": applied, "skipped": skipped}
