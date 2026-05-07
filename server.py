@@ -678,8 +678,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not title:
             return self._send_error(400, 'Card title is required')
         slug = slugify(title)
+        card_id = next_id()
         today_str = str(date.today())
         meta = {
+            'id': card_id,
             'title': title,
             'assignee': data.get('assignee', ''),
             'labels': data.get('labels', []),
@@ -698,6 +700,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if slug not in order:
             order.append(slug)
         write_json(order_path, order)
+        register_id(card_id, board_slug, list_slug)
         meta['slug'] = slug
         meta['board'] = board_slug
         meta['list'] = list_slug

@@ -334,6 +334,7 @@ class TestCardAPI(unittest.TestCase):
         server.ensure_data_dir()
         # Create a board for card tests
         make_request_port(8090, 'POST', '/api/boards', {'name': 'Card Board'})
+        server.reset_id_index()
 
     def test_create_card(self):
         status, data = make_request_port(8090, 'POST',
@@ -348,6 +349,23 @@ class TestCardAPI(unittest.TestCase):
         self.assertEqual(data['slug'], 'my-card')
         self.assertEqual(data['assignee'], 'Alice')
         self.assertEqual(data['labels'], ['bug', 'urgent'])
+
+    def test_create_card_assigns_id(self):
+        status, data = make_request_port(8090, 'POST',
+            '/api/boards/card-board/lists/ideas/cards', {'title': 'First'})
+        self.assertEqual(status, 201)
+        self.assertEqual(data['id'], 'C-1')
+
+        status, data = make_request_port(8090, 'POST',
+            '/api/boards/card-board/lists/ideas/cards', {'title': 'Second'})
+        self.assertEqual(status, 201)
+        self.assertEqual(data['id'], 'C-2')
+
+    def test_create_card_writes_id_to_frontmatter(self):
+        make_request_port(8090, 'POST',
+            '/api/boards/card-board/lists/ideas/cards', {'title': 'Has ID'})
+        card = server.read_card('card-board', 'ideas', 'has-id')
+        self.assertEqual(card['id'], 'C-1')
 
     def test_get_card(self):
         make_request_port(8090, 'POST',
