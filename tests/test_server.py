@@ -740,9 +740,12 @@ class TestNotesEndpoints(unittest.TestCase):
             {"note_id": note_id, "operations": ops})
         self.assertEqual(status, 200)
         self.assertEqual(len(result["applied"]), 1)
+        # Extract the assigned id from the response
+        target = result["applied"][0]["target"]
+        card_id = target.split("/")[-1]
         # Card now exists
         status, card = make_request_port(self.port, "GET",
-            "/api/cards/alpha/backlog/do-thing")
+            f"/api/cards/alpha/backlog/{card_id}")
         self.assertEqual(status, 200)
 
     def test_apply_accepts_null_note_id(self):
@@ -753,9 +756,12 @@ class TestNotesEndpoints(unittest.TestCase):
             {"note_id": None, "operations": ops})
         self.assertEqual(status, 200)
         self.assertEqual(len(result["applied"]), 1)
+        # Extract the assigned id from the response
+        target = result["applied"][0]["target"]
+        card_id = target.split("/")[-1]
         # Created card has no source-note attachment.
         _, card = make_request_port(self.port, "GET",
-            "/api/cards/alpha/backlog/from-chat")
+            f"/api/cards/alpha/backlog/{card_id}")
         self.assertEqual(card.get("attachments") or [], [])
 
 

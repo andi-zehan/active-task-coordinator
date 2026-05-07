@@ -565,24 +565,33 @@ def analyze_stream(body: str, title: str, *, model: str, client,
 def _describe_op_for_prompt(op: dict) -> str:
     """One-line description of a proposed op, for the refine prompt context."""
     name = op.get("op", "?")
-    path_card = op.get("card")
-    path = (f"{op.get('board','?')}/{op.get('list','?')}/{path_card}"
-            if path_card else f"{op.get('board','?')}/{op.get('list','?')}")
     if name == "create_card":
+        path = f"{op.get('board','?')}/{op.get('list','?')}"
         return (f"create_card \"{op.get('title','')}\" → {path} "
                 f"(assignee={op.get('assignee','–')}, due={op.get('due','–')})")
+    cid = op.get("id", "?")
+    title = ""
+    located = server.resolve_id(cid) if cid != "?" else None
+    if located:
+        b, l = located
+        card = server.read_card(b, l, cid)
+        if card:
+            title = card.get("title", "")
+    target = f"{cid}: {title}" if title else cid
     if name == "add_comment":
         text = (op.get("text") or "")[:120]
-        return f"add_comment on {path}: \"{text}\""
+        return f"add_comment on {target}: \"{text}\""
     if name == "tick_checklist":
-        return f"tick \"{op.get('item','')}\" on {path}"
+        return f"tick \"{op.get('item','')}\" on {target}"
     if name == "add_checklist_item":
-        return f"add_checklist_item \"{op.get('item','')}\" on {path}"
+        return f"add_checklist_item \"{op.get('item','')}\" on {target}"
     if name == "move_card":
-        return f"move_card {path} → {op.get('target_list','?')}"
+        return f"move_card {target} → {op.get('target_list','?')}"
     if name == "update_field":
-        return f"update_field {op.get('field','?')}={json.dumps(op.get('value'))} on {path}"
-    return f"{name} on {path}"
+        return f"update_field {op.get('field','?')}={json.dumps(op.get('value'))} on {target}"
+    if name == "rename_card":
+        return f"rename_card {target} → \"{op.get('title','')}\""
+    return f"{name} on {target}"
 
 
 def refine_stream(note_id: str, current_ops: list[dict], feedback: str,

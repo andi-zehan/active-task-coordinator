@@ -97,7 +97,7 @@ READ_TOOL_DEFS = [
     },
     {
         "name": "list_cards",
-        "description": "List cards on a board (optionally filtered to one list). Returns slug, title, labels, due, assignee. Call read_card for the body.",
+        "description": "List cards on a board (optionally filtered to one list). Returns slug, title, labels, due, assignee. Call get_card_by_id for the body.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -154,7 +154,7 @@ READ_TOOL_DEFS = [
     },
     {
         "name": "get_card_by_id",
-        "description": "Look up a card by its global ID (e.g. C-12). Returns the same shape as read_card.",
+        "description": "Look up a card by its global ID (e.g. C-12). Returns the full card object.",
         "input_schema": {
             "type": "object",
             "properties": {"id": {"type": "string"}},

@@ -765,6 +765,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         order = read_json(order_path)
         order = [s for s in order if s != card_slug]
         write_json(order_path, order)
+        unregister_id(card_slug)
         self._send_json({'deleted': card_slug})
 
     def _handle_move_card(self, board_slug, list_slug, card_slug):
@@ -797,6 +798,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             dst_order.insert(position, card_slug)
         write_json(dst_order_path, dst_order)
 
+        register_id(card_slug, target_board, target_list)
         self._send_json({'moved': card_slug, 'from': list_slug, 'to': target_list, 'board': target_board})
 
     # ── aggregation handlers ─────────────────────────────────────────

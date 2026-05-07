@@ -4310,9 +4310,18 @@ function renderOpDetails(op) {
 // One row + its details block. Shared by chat sidebar and notes wizard.
 function renderOpRowHtml(op, i) {
   const checked = op.confidence !== 'low' ? 'checked' : '';
-  const target = op.card
-    ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
-    : `${op.board || ''} / ${op.list || ''}`;
+  let target;
+  if (op.id) {
+    // id-based ops: use id from state.idIndex
+    const title = state.idIndex && state.idIndex.get(op.id) ? state.idIndex.get(op.id).title : '';
+    target = title ? `${op.id}: ${escHtml(title)}` : op.id;
+  } else if (op.card) {
+    // legacy: board/list/card path
+    target = `${op.board || ''} / ${op.list || ''} / ${op.card}`;
+  } else {
+    // create_card: board/list path
+    target = `${op.board || ''} / ${op.list || ''}`;
+  }
   const headline = op.op === 'create_card'        ? `"${escHtml(op.title || '')}"`
                  : op.op === 'add_comment'        ? `"${escHtml((op.text || '').slice(0, 80))}${(op.text || '').length > 80 ? '…' : ''}"`
                  : op.op === 'tick_checklist'     ? `tick "${escHtml(op.item || '')}"`
@@ -4440,16 +4449,28 @@ function describeAppliedOp(applied) {
 
 // Compact one-line description of a queued op for the refine context block.
 function describePendingOp(op) {
-  const path = op.card
-    ? `${op.board || '?'}/${op.list || '?'}/${op.card}`
-    : `${op.board || '?'}/${op.list || '?'}`;
-  if (op.op === 'create_card')        return `create_card "${op.title || ''}" → ${path} (assignee=${op.assignee || '–'}, due=${op.due || '–'})`;
-  if (op.op === 'add_comment')        return `add_comment on ${path}: "${(op.text || '').slice(0, 100)}"`;
-  if (op.op === 'tick_checklist')     return `tick "${op.item || ''}" on ${path}`;
-  if (op.op === 'add_checklist_item') return `add_checklist_item "${op.item || ''}" on ${path}`;
-  if (op.op === 'move_card')          return `move_card ${path} → ${op.target_list || '?'}`;
-  if (op.op === 'update_field')       return `update_field ${op.field || '?'}=${JSON.stringify(op.value)} on ${path}`;
-  return `${op.op} on ${path}`;
+  if (op.op === 'create_card') {
+    const path = `${op.board || '?'}/${op.list || '?'}`;
+    return `create_card "${op.title || ''}" → ${path} (assignee=${op.assignee || '–'}, due=${op.due || '–'})`;
+  }
+  let target;
+  if (op.id) {
+    // id-based ops: use id from state.idIndex
+    const title = state.idIndex && state.idIndex.get(op.id) ? state.idIndex.get(op.id).title : '';
+    target = title ? `${op.id}: ${title}` : op.id;
+  } else {
+    // legacy: board/list/card path
+    const path = op.card
+      ? `${op.board || '?'}/${op.list || '?'}/${op.card}`
+      : `${op.board || '?'}/${op.list || '?'}`;
+    target = path;
+  }
+  if (op.op === 'add_comment')        return `add_comment on ${target}: "${(op.text || '').slice(0, 100)}"`;
+  if (op.op === 'tick_checklist')     return `tick "${op.item || ''}" on ${target}`;
+  if (op.op === 'add_checklist_item') return `add_checklist_item "${op.item || ''}" on ${target}`;
+  if (op.op === 'move_card')          return `move_card ${target} → ${op.target_list || '?'}`;
+  if (op.op === 'update_field')       return `update_field ${op.field || '?'}=${JSON.stringify(op.value)} on ${target}`;
+  return `${op.op} on ${target}`;
 }
 
 async function applyOpsForTurn(bubble, turnIndex) {
