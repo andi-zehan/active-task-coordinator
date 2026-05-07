@@ -140,6 +140,17 @@ Writing cards:
   WHY the work exists; the checklist captures WHAT is to be done.
 - If a card already exists and the note adds new items to its list, propose
   add_checklist_item ops (one per item). Don't dump them in an add_comment.
+
+Refining queued proposals:
+- After the initial pass, the user may send back feedback on the proposed
+  ops ("change assignee to X on card Y", "drop card Z", "split this in two").
+  Their message will include a "(Currently proposed: …)" block listing what
+  is already queued, plus their feedback.
+- Treat the refinement as a full re-emit: queue the COMPLETE corrected set
+  of write tools again. Anything you don't re-queue is dropped.
+- Do NOT try to "edit" or "delete" previous ops — there are no such tools.
+  Just call create_card / add_comment / etc. fresh with the right values.
+- Then call finish with a short summary of what changed.
 """
 
 
@@ -539,6 +550,149 @@ def analyze_stream(body: str, title: str, *, model: str, client,
         yield {"type": "error",
                "message": "Model exited without proposing operations or calling finish."}
         return
+
+    yield {"type": "done", "note_id": note_id,
+           "summary": summary, "operations": proposed_ops}
+
+
+def _describe_op_for_prompt(op: dict) -> str:
+    """One-line description of a proposed op, for the refine prompt context."""
+    name = op.get("op", "?")
+    path_card = op.get("card")
+    path = (f"{op.get('board','?')}/{op.get('list','?')}/{path_card}"
+            if path_card else f"{op.get('board','?')}/{op.get('list','?')}")
+    if name == "create_card":
+        return (f"create_card \"{op.get('title','')}\" → {path} "
+                f"(assignee={op.get('assignee','–')}, due={op.get('due','–')})")
+    if name == "add_comment":
+        text = (op.get("text") or "")[:120]
+        return f"add_comment on {path}: \"{text}\""
+    if name == "tick_checklist":
+        return f"tick \"{op.get('item','')}\" on {path}"
+    if name == "add_checklist_item":
+        return f"add_checklist_item \"{op.get('item','')}\" on {path}"
+    if name == "move_card":
+        return f"move_card {path} → {op.get('target_list','?')}"
+    if name == "update_field":
+        return f"update_field {op.get('field','?')}={json.dumps(op.get('value'))} on {path}"
+    return f"{name} on {path}"
+
+
+def refine_stream(note_id: str, current_ops: list[dict], feedback: str,
+                  *, model: str, client, max_turns: int = MAX_TOOL_TURNS):
+    """Re-run the agent on a note, given its previously-queued ops + user feedback.
+
+    Yields the same event shapes as analyze_stream. The model is instructed to
+    re-emit the COMPLETE corrected set of write tools — anything it doesn't
+    re-queue is dropped. The caller should replace its local pending-ops list
+    with the new `operations` from the 'done' event.
+    """
+    note_path = NOTES_DIR / f"{note_id}.md"
+    if not note_path.exists():
+        yield {"type": "error", "message": f"note '{note_id}' not found"}
+        return
+
+    raw = note_path.read_text(encoding="utf-8")
+    note_meta, note_body = server.parse_frontmatter(raw)
+    note_title = note_meta.get("title", "")
+
+    yield {"type": "started", "note_id": note_id}
+
+    toc = build_toc()
+    proposed_ops: list[dict] = []
+    summary = ""
+    finished = False
+
+    proposals_block = (
+        "PREVIOUSLY PROPOSED OPS (you queued these last turn):\n"
+        + "\n".join(f"  {i+1}. {_describe_op_for_prompt(op)}"
+                    for i, op in enumerate(current_ops))
+        if current_ops else
+        "PREVIOUSLY PROPOSED OPS: (none — start fresh.)"
+    )
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "BOARD INDEX:\n" + json.dumps(toc),
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        f"NOTE_ID: {note_id}\n"
+                        f"TODAY: {date.today().isoformat()}\n\n"
+                        f"ORIGINAL MEETING NOTE (titled \"{note_title}\"):\n{note_body}\n\n"
+                        f"{proposals_block}\n\n"
+                        f"USER FEEDBACK ON YOUR PROPOSED OPS:\n{feedback}\n\n"
+                        f"Re-emit the COMPLETE corrected set of write-tool calls. "
+                        f"Anything you don't re-queue is dropped. Then call finish."
+                    ),
+                },
+            ],
+        },
+    ]
+
+    for turn in range(1, max_turns + 1):
+        yield {"type": "turn", "n": turn}
+        reset_read_cache()
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            tools=TOOLS,
+            system=[
+                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+            ],
+            messages=messages,
+        )
+
+        assistant_blocks = [_block_to_dict(b) for b in response.content]
+        messages.append({"role": "assistant", "content": assistant_blocks})
+
+        tool_use_blocks = [b for b in response.content if getattr(b, "type", "") == "tool_use"]
+        if not tool_use_blocks:
+            break
+
+        tool_results = []
+        for block in tool_use_blocks:
+            name = getattr(block, "name", "")
+            args = getattr(block, "input", {}) or {}
+            tool_id = getattr(block, "id", "")
+            yield {"type": "tool", "name": name, "args": args}
+            try:
+                if name == "finish":
+                    summary = args.get("summary", "")
+                    finished = True
+                    payload = {"ok": True}
+                    yield {"type": "finish", "summary": summary}
+                elif name in READ_TOOLS:
+                    payload = READ_TOOLS[name](args)
+                    yield {"type": "result", "name": name,
+                           "summary": _summarize_read_result(name, args, payload)}
+                elif name in _WRITE_OP_NAMES:
+                    payload = _queue_op(name, args, proposed_ops)
+                    yield {"type": "queued", "op": name,
+                           **_queued_summary_fields(name, args)}
+                else:
+                    payload = {"error": f"unknown tool '{name}'"}
+                    yield {"type": "result", "name": name,
+                           "summary": f"unknown tool '{name}'"}
+            except (KeyError, ValueError, TypeError) as e:
+                payload = {"error": str(e)}
+                yield {"type": "result", "name": name, "summary": f"error: {e}"}
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_id,
+                "content": json.dumps(payload),
+            })
+
+        messages.append({"role": "user", "content": tool_results})
+
+        if finished:
+            break
 
     yield {"type": "done", "note_id": note_id,
            "summary": summary, "operations": proposed_ops}

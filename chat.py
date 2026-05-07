@@ -48,6 +48,16 @@ Writing cards (when you propose create_card):
 When you have answered the user, just stop calling tools and write a
 short text response. The conversation continues; you do not need a
 'finish' tool.
+
+Refining queued proposals:
+- The user may follow up with feedback on ops you previously queued
+  ("change the assignee to X", "drop the second one", "split this in two").
+  Their message will include a "(Currently proposed: …)" block listing
+  what is already queued.
+- Treat the refinement as a full re-emit: queue the COMPLETE corrected
+  set of write tools again. Anything you don't re-queue is dropped.
+- Do not try to "edit" or "delete" previous ops — there are no such tools.
+  Just call create_card / add_comment / etc. fresh with the right values.
 """
 
 

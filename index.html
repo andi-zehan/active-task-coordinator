@@ -202,6 +202,38 @@ a { color: #0052cc; text-decoration: none; }
 .target { color: #5e6c84; margin-left: 8px; font-size: 12px; }
 .summary { margin-left: 8px; }
 .reason { color: #777; font-size: 12px; margin-left: 24px; margin-top: 2px; }
+.op-details {
+  margin: 6px 0 0 24px;
+  padding: 8px 10px;
+  background: #f4f5f7;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #172b4d;
+  line-height: 1.45;
+}
+.op-details .od-field { margin-bottom: 4px; }
+.op-details .od-field:last-child { margin-bottom: 0; }
+.op-details .od-label {
+  display: inline-block;
+  min-width: 70px;
+  color: #5e6c84;
+  font-weight: 600;
+}
+.op-details .od-checklist {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+}
+.op-details .od-checklist li { margin: 1px 0; }
+.op-details pre {
+  margin: 4px 0 0 0;
+  padding: 6px 8px;
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
 
 /* ── Filter Bar ───────────────────────────────────────────────── */
 .filter-bar {
@@ -802,7 +834,29 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-size: 11px;
   color: #5e6c84;
   font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
+
+/* Reusable inline spinner. Pair with text via display:inline-flex on the parent. */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #dfe1e6;
+  border-top-color: #4c9aff;
+  border-radius: 50%;
+  animation: spinner-rot 0.7s linear infinite;
+  vertical-align: middle;
+}
+.spinner.lg { width: 16px; height: 16px; border-width: 2px; }
+@keyframes spinner-rot { to { transform: rotate(360deg); } }
+.spinner-row {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #5e6c84;
+}
+.spinner-row[hidden] { display: none; }
 .chat-error {
   color: #bf2600;
   background: #ffebe6;
@@ -825,6 +879,30 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   color: #172b4d;
 }
 .chat-ops-panel.applied { background: #e3fcef; border-color: #abf5d1; }
+.chat-ops-panel .actions-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px;
+}
+.chat-ops-panel .chat-ops-apply { display: inline-flex; align-items: center; gap: 6px; }
+.chat-ops-panel .actions-row .spacer { flex: 1; }
+.chat-ops-panel .refine-form {
+  margin-top: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px;
+  background: #f4f5f7;
+  border-radius: 4px;
+}
+.chat-ops-panel .refine-form textarea {
+  width: 100%; box-sizing: border-box;
+  min-height: 50px;
+  padding: 6px 8px;
+  border: 1px solid #dfe1e6; border-radius: 4px;
+  font-size: 13px; font-family: inherit; resize: vertical;
+}
+.chat-ops-panel .refine-form textarea:focus { border-color: #4c9aff; outline: none; }
+.chat-ops-panel .refine-form .refine-actions {
+  display: flex; justify-content: flex-end; gap: 6px;
+}
 .chat-input-row {
   display: flex;
   gap: 8px;
@@ -1657,7 +1735,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         </div>
         <div id="notes-events" hidden style="margin-bottom:12px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-          <span id="notes-spinner" hidden style="font-size:13px;color:#5e6c84;">Analyzing…</span>
+          <span id="notes-spinner" hidden class="spinner-row"><span class="spinner"></span>Analyzing…</span>
           <button id="btn-notes-cancel" class="header-btn">Cancel</button>
           <button id="btn-notes-analyze" class="btn-new-card">Analyze</button>
         </div>
@@ -1667,9 +1745,17 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <h2>Preview</h2>
         <p id="notes-summary" style="font-size:13px;color:#5e6c84;"></p>
         <div id="notes-ops"></div>
-        <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;">
+        <div id="notes-refine-events" hidden style="margin-top:8px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:120px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="notes-refine-form" style="margin-top:10px;padding:10px;background:#f4f5f7;border-radius:6px;display:flex;flex-direction:column;gap:6px;">
+          <textarea id="notes-refine-text" placeholder="Tell the AI what to change before applying…" style="width:100%;box-sizing:border-box;min-height:60px;padding:6px 8px;border:1px solid #dfe1e6;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+            <span id="notes-refine-spinner" hidden class="spinner-row"><span class="spinner"></span>Revising…</span>
+            <button id="btn-notes-refine-send" class="btn-sm primary">Ask AI to revise</button>
+          </div>
+        </div>
+        <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;align-items:center;">
           <button id="btn-notes-back" class="header-btn">← Back</button>
-          <button id="btn-notes-apply" class="btn-new-card">Apply selected</button>
+          <button id="btn-notes-apply" class="btn-new-card">Apply</button>
         </div>
       </div>
       <!-- Step 3 -->
@@ -3925,7 +4011,7 @@ function renderAssistantBubble() {
   const wrap = document.createElement('div');
   wrap.className = 'chat-msg-assistant';
   wrap.innerHTML = `
-    <div class="chat-status">Thinking…</div>
+    <div class="chat-status"><span class="spinner"></span><span class="chat-status-text">Thinking…</span></div>
     <div class="chat-tools"></div>
     <div class="chat-text"></div>
     <div class="chat-ops"></div>
@@ -3936,7 +4022,7 @@ function renderAssistantBubble() {
 }
 
 function setBubbleStatus(bubble, text) {
-  const s = bubble.querySelector('.chat-status');
+  const s = bubble.querySelector('.chat-status .chat-status-text');
   if (s) s.textContent = text;
 }
 function clearBubbleStatus(bubble) {
@@ -3975,6 +4061,76 @@ function appendErrorLine(bubble, message) {
 
 /* ---- Proposed-ops panel (per-turn, inside the assistant bubble) ---- */
 
+// Build an HTML details block showing exactly what this op will do once applied.
+// For create_card this surfaces description, checklist, assignee, due, labels —
+// otherwise the user only sees the title in the row and assumes that's all.
+function renderOpDetails(op) {
+  const parts = [];
+  const field = (label, val) =>
+    `<div class="od-field"><span class="od-label">${label}</span> ${val}</div>`;
+
+  if (op.op === 'create_card') {
+    if (op.assignee) parts.push(field('Assignee', escHtml(op.assignee)));
+    if (op.due)      parts.push(field('Due', escHtml(op.due)));
+    if (Array.isArray(op.labels) && op.labels.length)
+      parts.push(field('Labels', op.labels.map(l => escHtml(l)).join(', ')));
+    if (op.description)
+      parts.push(field('Description', `<pre>${escHtml(op.description)}</pre>`));
+    if (Array.isArray(op.checklist) && op.checklist.length) {
+      // Per-item checkboxes so the user can drop individual subtasks before
+      // applying. Note: the row uses a <label> wrapper for the main op
+      // checkbox, so we can't nest another <label> here (invalid HTML +
+      // Chrome routes the inner click to the outer input). Use spans and
+      // wire the toggle manually via stopPropagation in the apply path.
+      const items = op.checklist.map((it, k) => `
+        <li>
+          <input type="checkbox" data-keep-i="${k}" checked
+            onclick="event.stopPropagation();"
+            style="margin-right:6px;vertical-align:middle;" />
+          <span>${escHtml(it)}</span>
+        </li>
+      `).join('');
+      parts.push(field('Checklist', `<ul class="od-checklist">${items}</ul>`));
+    }
+  } else if (op.op === 'add_comment') {
+    if (op.text) parts.push(field('Text', `<pre>${escHtml(op.text)}</pre>`));
+  } else if (op.op === 'tick_checklist' || op.op === 'add_checklist_item') {
+    if (op.item) parts.push(field('Item', escHtml(op.item)));
+  } else if (op.op === 'move_card') {
+    if (op.target_list) parts.push(field('Target list', escHtml(op.target_list)));
+  } else if (op.op === 'update_field') {
+    if (op.field) parts.push(field('Field', escHtml(op.field)));
+    if (op.value !== undefined) parts.push(field('New value', escHtml(JSON.stringify(op.value))));
+  }
+  if (!parts.length) return '';
+  return `<div class="op-details">${parts.join('')}</div>`;
+}
+
+// One row + its details block. Shared by chat sidebar and notes wizard.
+function renderOpRowHtml(op, i) {
+  const checked = op.confidence !== 'low' ? 'checked' : '';
+  const target = op.card
+    ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
+    : `${op.board || ''} / ${op.list || ''}`;
+  const headline = op.op === 'create_card'        ? `"${escHtml(op.title || '')}"`
+                 : op.op === 'add_comment'        ? `"${escHtml((op.text || '').slice(0, 80))}${(op.text || '').length > 80 ? '…' : ''}"`
+                 : op.op === 'tick_checklist'     ? `tick "${escHtml(op.item || '')}"`
+                 : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
+                 : op.op === 'move_card'          ? `→ ${escHtml(op.target_list || '')}`
+                 : op.op === 'update_field'       ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
+                 : '';
+  return `
+    <label>
+      <input type="checkbox" data-i="${i}" ${checked} />
+      <strong>${escHtml(op.op || '')}</strong>
+      <span class="conf conf-${op.confidence || 'med'}">${escHtml(op.confidence || '')}</span>
+      <span class="target">${escHtml(target)}</span>
+      <span class="summary">${headline}</span>
+      <div class="reason">${escHtml(op.reason || '')}</div>
+    </label>
+    ${renderOpDetails(op)}`;
+}
+
 function renderOpsRows(ops, container) {
   container.innerHTML = '';
   if (!ops.length) {
@@ -3984,28 +4140,35 @@ function renderOpsRows(ops, container) {
   ops.forEach((op, i) => {
     const div = document.createElement('div');
     div.className = 'op-row';
-    const checked = op.confidence !== 'low' ? 'checked' : '';
-    const target = op.card
-      ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
-      : `${op.board || ''} / ${op.list || ''}`;
-    const summary = op.op === 'create_card' ? `"${escHtml(op.title || '')}"`
-      : op.op === 'add_comment' ? `"${escHtml((op.text || '').slice(0, 80))}"`
-      : op.op === 'tick_checklist' ? `tick "${escHtml(op.item || '')}"`
-      : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
-      : op.op === 'move_card' ? `→ ${escHtml(op.target_list || '')}`
-      : op.op === 'update_field' ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
-      : '';
-    div.innerHTML = `
-      <label>
-        <input type="checkbox" data-i="${i}" ${checked} />
-        <strong>${escHtml(op.op || '')}</strong>
-        <span class="conf conf-${op.confidence || 'med'}">${escHtml(op.confidence || '')}</span>
-        <span class="target">${escHtml(target)}</span>
-        <span class="summary">${summary}</span>
-        <div class="reason">${escHtml(op.reason || '')}</div>
-      </label>`;
+    div.innerHTML = renderOpRowHtml(op, i);
     container.appendChild(div);
   });
+}
+
+// Walk a container of rendered op rows and return only the ones the user kept,
+// honoring per-checklist-item checkboxes for create_card. The returned op
+// objects are shallow clones — never mutate the input array.
+function collectSelectedOps(container, allOps) {
+  const rows = container.querySelectorAll('.op-row');
+  const out = [];
+  rows.forEach(row => {
+    const main = row.querySelector('input[type=checkbox][data-i]');
+    if (!main || !main.checked) return;
+    const idx = parseInt(main.dataset.i, 10);
+    const op = allOps[idx];
+    if (!op) return;
+    if (op.op === 'create_card' && Array.isArray(op.checklist) && op.checklist.length) {
+      const keepBoxes = row.querySelectorAll('input[type=checkbox][data-keep-i]');
+      const keptItems = [];
+      keepBoxes.forEach(b => {
+        if (b.checked) keptItems.push(op.checklist[parseInt(b.dataset.keepI, 10)]);
+      });
+      out.push({ ...op, checklist: keptItems });
+    } else {
+      out.push(op);
+    }
+  });
+  return out;
 }
 
 function renderOpsPanelForTurn(bubble, turnIndex) {
@@ -4014,36 +4177,90 @@ function renderOpsPanelForTurn(bubble, turnIndex) {
   if (!panel) {
     panel = document.createElement('div');
     panel.className = 'chat-ops-panel';
+    panel.dataset.turnIndex = String(turnIndex);
     panel.innerHTML = `
       <div class="panel-title">Proposed changes (<span class="chat-ops-count">0</span>)</div>
       <div class="chat-ops-rows"></div>
-      <button class="chat-ops-apply btn-new-card" style="margin-top:6px;">Apply selected</button>
+      <div class="refine-form">
+        <textarea placeholder="Tell the AI what to change before applying…"></textarea>
+        <div class="refine-actions">
+          <button class="btn-sm primary refine-send" type="button">Ask AI to revise</button>
+        </div>
+      </div>
+      <div class="actions-row">
+        <span class="spacer"></span>
+        <button class="chat-ops-apply btn-new-card">Apply</button>
+      </div>
     `;
     bubble.querySelector('.chat-ops').appendChild(panel);
     panel.querySelector('.chat-ops-apply').addEventListener('click', () => {
       applyOpsForTurn(bubble, turnIndex);
+    });
+    const refineTextarea = panel.querySelector('.refine-form textarea');
+    panel.querySelector('.refine-send').addEventListener('click', () => {
+      const text = refineTextarea.value.trim();
+      if (!text) return;
+      refineProposalsForTurn(bubble, turnIndex, text);
+    });
+    refineTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const text = refineTextarea.value.trim();
+        if (text) refineProposalsForTurn(bubble, turnIndex, text);
+      }
     });
   }
   panel.querySelector('.chat-ops-count').textContent = ops.length;
   renderOpsRows(ops, panel.querySelector('.chat-ops-rows'));
 }
 
+// Send a refine instruction with the current proposals as context.
+// Replaces this turn's pending ops with whatever the model re-emits.
+function refineProposalsForTurn(bubble, turnIndex, feedback) {
+  const ops = chatState.pendingByTurn[turnIndex] || [];
+  const proposalsBlock = ops.length
+    ? `(Currently proposed:\n` +
+      ops.map((op, i) => `  ${i + 1}. ${describePendingOp(op)}`).join('\n') +
+      `)\n\n`
+    : '';
+  // Wipe the proposals for this turn — the new turn will populate fresh ones.
+  chatState.pendingByTurn[turnIndex] = [];
+  // Re-render the now-empty panel so old proposals visually disappear.
+  renderOpsPanelForTurn(bubble, turnIndex);
+  sendChatMessage({
+    displayText: feedback,
+    outgoingText: proposalsBlock + feedback,
+  });
+}
+
 function describeAppliedOp(applied) {
   return `${applied.op} ${applied.target}`;
+}
+
+// Compact one-line description of a queued op for the refine context block.
+function describePendingOp(op) {
+  const path = op.card
+    ? `${op.board || '?'}/${op.list || '?'}/${op.card}`
+    : `${op.board || '?'}/${op.list || '?'}`;
+  if (op.op === 'create_card')        return `create_card "${op.title || ''}" → ${path} (assignee=${op.assignee || '–'}, due=${op.due || '–'})`;
+  if (op.op === 'add_comment')        return `add_comment on ${path}: "${(op.text || '').slice(0, 100)}"`;
+  if (op.op === 'tick_checklist')     return `tick "${op.item || ''}" on ${path}`;
+  if (op.op === 'add_checklist_item') return `add_checklist_item "${op.item || ''}" on ${path}`;
+  if (op.op === 'move_card')          return `move_card ${path} → ${op.target_list || '?'}`;
+  if (op.op === 'update_field')       return `update_field ${op.field || '?'}=${JSON.stringify(op.value)} on ${path}`;
+  return `${op.op} on ${path}`;
 }
 
 async function applyOpsForTurn(bubble, turnIndex) {
   const panel = bubble.querySelector('.chat-ops-panel');
   if (!panel) return;
   const allOps = chatState.pendingByTurn[turnIndex] || [];
-  const checks = panel.querySelectorAll('input[type=checkbox]');
-  const selected = [];
-  checks.forEach(c => { if (c.checked) selected.push(allOps[parseInt(c.dataset.i)]); });
+  const selected = collectSelectedOps(panel.querySelector('.chat-ops-rows'), allOps);
   if (!selected.length) return;
 
   const applyBtn = panel.querySelector('.chat-ops-apply');
   applyBtn.disabled = true;
-  applyBtn.textContent = 'Applying…';
+  applyBtn.innerHTML = '<span class="spinner" style="border-color:#fff5;border-top-color:#fff;"></span> Applying…';
 
   let result;
   try {
@@ -4053,7 +4270,7 @@ async function applyOpsForTurn(bubble, turnIndex) {
     });
   } catch (err) {
     applyBtn.disabled = false;
-    applyBtn.textContent = 'Apply selected';
+    applyBtn.textContent = 'Apply';
     appendErrorLine(bubble, 'Apply failed: ' + err.message);
     return;
   }
@@ -4085,15 +4302,19 @@ async function applyOpsForTurn(bubble, turnIndex) {
 
 /* ---- Send ---- */
 
-async function sendChatMessage() {
+async function sendChatMessage(opts) {
   if (chatState.inflight) return;
   const inputEl = document.getElementById('chat-input');
-  const text = inputEl.value.trim();
+  // opts.displayText / opts.outgoingText let callers (e.g. refine) send a
+  // longer payload to the model than what shows up in the user bubble.
+  const text = (opts && opts.displayText !== undefined)
+    ? opts.displayText
+    : inputEl.value.trim();
   if (!text) return;
 
-  let outgoing = text;
+  let outgoing = (opts && opts.outgoingText !== undefined) ? opts.outgoingText : text;
   if (chatState.pendingApplyNote) {
-    outgoing = chatState.pendingApplyNote.trim() + '\n\n' + text;
+    outgoing = chatState.pendingApplyNote.trim() + '\n\n' + outgoing;
     chatState.pendingApplyNote = '';
   }
 
@@ -4267,14 +4488,51 @@ async function streamNotesAnalyze(text, title, onEvent) {
   return lastDone;
 }
 
+async function streamNotesRefine(noteId, currentOps, feedback, onEvent) {
+  const r = await fetch('/api/notes/refine', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({ note_id: noteId, current_ops: currentOps, feedback }),
+  });
+  if (!r.ok) throw new Error(`POST /api/notes/refine: ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let lastDone = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const dataLines = block.split('\n')
+        .filter(l => l.startsWith('data:'))
+        .map(l => l.slice(5).trimStart());
+      if (!dataLines.length) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLines.join('\n')); }
+      catch { continue; }
+      onEvent(parsed);
+      if (parsed.type === 'done') lastDone = parsed;
+      if (parsed.type === 'error') throw new Error(parsed.message || 'refine error');
+    }
+  }
+  if (!lastDone) throw new Error('stream ended without a done event');
+  return lastDone;
+}
+
 document.getElementById('btn-notes-analyze').addEventListener('click', async () => {
   const text = document.getElementById('notes-text').value.trim();
   if (!text) return;
   const title = document.getElementById('notes-title').value;
   const evts = document.getElementById('notes-events');
+  const spinner = document.getElementById('notes-spinner');
   evts.hidden = false;
   evts.innerHTML = '';
   document.getElementById('btn-notes-analyze').disabled = true;
+  spinner.hidden = false;
   try {
     const result = await streamNotesAnalyze(text, title, (ev) => {
       appendNotesEvent(formatNotesEvent(ev));
@@ -4290,49 +4548,72 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
     alert('Analyze failed: ' + err.message);
   } finally {
     document.getElementById('btn-notes-analyze').disabled = false;
+    spinner.hidden = true;
   }
 });
 
 function renderOps(ops) {
-  const container = document.getElementById('notes-ops');
-  container.innerHTML = '';
-  if (!ops.length) {
-    container.innerHTML = '<p style="color:#5e6c84;font-size:13px;">No operations proposed.</p>';
-    return;
-  }
-  ops.forEach((op, i) => {
-    const div = document.createElement('div');
-    div.className = 'op-row';
-    const checked = op.confidence !== 'low' ? 'checked' : '';
-    const target = op.card
-      ? `${op.board || ''} / ${op.list || ''} / ${op.card}`
-      : `${op.board || ''} / ${op.list || ''}`;
-    const summary = op.op === 'create_card' ? `"${escHtml(op.title || '')}"`
-      : op.op === 'add_comment' ? `"${escHtml((op.text || '').slice(0, 80))}"`
-      : op.op === 'tick_checklist' ? `tick "${escHtml(op.item || '')}"`
-      : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
-      : op.op === 'move_card' ? `→ ${escHtml(op.target_list || '')}`
-      : op.op === 'update_field' ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
-      : '';
-    div.innerHTML = `
-      <label>
-        <input type="checkbox" data-i="${i}" ${checked} />
-        <strong>${escHtml(op.op || '')}</strong>
-        <span class="conf conf-${op.confidence || 'med'}">${escHtml(op.confidence || '')}</span>
-        <span class="target">${escHtml(target)}</span>
-        <span class="summary">${summary}</span>
-        <div class="reason">${escHtml(op.reason || '')}</div>
-      </label>`;
-    container.appendChild(div);
-  });
+  // Same renderer the chat sidebar uses, so changes apply in both places.
+  renderOpsRows(ops, document.getElementById('notes-ops'));
 }
 
 document.getElementById('btn-notes-back').addEventListener('click', () => showNotesStep(1));
 
+(function wireNotesRefine() {
+  const textEl = document.getElementById('notes-refine-text');
+  const sendBtn = document.getElementById('btn-notes-refine-send');
+  const applyBtn = document.getElementById('btn-notes-apply');
+  const evts = document.getElementById('notes-refine-events');
+
+  const spinner = document.getElementById('notes-refine-spinner');
+  const send = async () => {
+    const feedback = textEl.value.trim();
+    if (!feedback || !currentNoteId) return;
+    sendBtn.disabled = true;
+    applyBtn.disabled = true;
+    spinner.hidden = false;
+    evts.hidden = false;
+    evts.innerHTML = '';
+    const append = (line) => {
+      const div = document.createElement('div');
+      div.textContent = line;
+      evts.appendChild(div);
+      evts.scrollTop = evts.scrollHeight;
+    };
+    try {
+      const result = await streamNotesRefine(currentNoteId, currentOps, feedback, (ev) => {
+        append(formatNotesEvent(ev));
+      });
+      currentOps = result.operations || [];
+      document.getElementById('notes-summary').textContent =
+        `Note: ${currentNoteId} — ${result.summary || ''}`;
+      renderOps(currentOps);
+      textEl.value = '';
+    } catch (err) {
+      append(`❌ ${err.message}`);
+      alert('Refine failed: ' + err.message);
+    } finally {
+      sendBtn.disabled = false;
+      applyBtn.disabled = false;
+      spinner.hidden = true;
+    }
+  };
+
+  sendBtn.addEventListener('click', send);
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+})();
+
 document.getElementById('btn-notes-apply').addEventListener('click', async () => {
-  const checks = document.querySelectorAll('#notes-ops input[type=checkbox]');
-  const selected = [];
-  checks.forEach(c => { if (c.checked) selected.push(currentOps[parseInt(c.dataset.i)]); });
+  const selected = collectSelectedOps(document.getElementById('notes-ops'), currentOps);
+  const applyBtn = document.getElementById('btn-notes-apply');
+  const origLabel = applyBtn.textContent;
+  applyBtn.disabled = true;
+  applyBtn.style.display = 'inline-flex';
+  applyBtn.style.alignItems = 'center';
+  applyBtn.style.gap = '6px';
+  applyBtn.innerHTML = '<span class="spinner" style="border-color:#fff5;border-top-color:#fff;"></span> Applying…';
   let result;
   try {
     result = await api.post('/api/notes/apply', {
@@ -4340,6 +4621,8 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
       operations: selected,
     });
   } catch (err) {
+    applyBtn.disabled = false;
+    applyBtn.textContent = origLabel;
     alert('Apply failed: ' + err.message);
     return;
   }

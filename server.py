@@ -438,6 +438,10 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/notes/analyze' and method == 'POST':
             return self._handle_notes_analyze()
 
+        # /api/notes/refine
+        if path == '/api/notes/refine' and method == 'POST':
+            return self._handle_notes_refine()
+
         # /api/chat
         if path == '/api/chat' and method == 'POST':
             return self._handle_chat()
@@ -898,6 +902,55 @@ class RequestHandler(BaseHTTPRequestHandler):
                 emit(event)
         except (BrokenPipeError, ConnectionResetError):
             return  # client disconnected; nothing to do
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_notes_refine(self):
+        """Stream a refine pass: re-run the agent given prior ops + user feedback."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        note_id = body.get('note_id', '').strip()
+        feedback = body.get('feedback', '').strip()
+        current_ops = body.get('current_ops', [])
+        if not note_id:
+            return self._send_error(400, 'note_id is required')
+        if not feedback:
+            return self._send_error(400, 'feedback is required')
+        if not isinstance(current_ops, list):
+            return self._send_error(400, 'current_ops must be a list')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            for event in notes.refine_stream(note_id, current_ops, feedback,
+                                             model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
         except Exception as e:
             try:
                 emit({"type": "error", "message": str(e)})
