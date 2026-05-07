@@ -1019,12 +1019,18 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   opacity: 0; transition: opacity 0.2s;
 }
 .modal-saved.visible { opacity: 1; }
-.modal-delete {
-  display: inline-flex; align-items: center; gap: 4px;
-  border: none; background: none; color: #b04632; font-size: 13px;
-  padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 16px;
+.modal-footer {
+  display: flex; justify-content: flex-end;
+  margin-top: 24px; padding-top: 16px;
+  border-top: 1px solid #ebecf0;
 }
-.modal-delete:hover { background: #ffebe6; }
+.modal-delete {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: none; color: #97a0af; font-size: 12px;
+  padding: 6px 10px; border-radius: 4px; cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.modal-delete:hover { color: #b04632; background: #fff5f3; }
 .modal-body { padding: 20px 24px 24px; }
 .modal-body h2 {
   font-size: 20px;
@@ -1034,34 +1040,61 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 .modal-title-input {
   font-size: 20px;
   font-weight: 700;
+  line-height: 1.3;
   border: 1px solid transparent;
   padding: 4px 8px;
+  padding-right: 36px;        /* leave room for the close (×) button */
   border-radius: 4px;
   width: 100%;
-  margin-bottom: 12px;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  display: block;
+  min-height: 32px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 .modal-title-input:hover { border-color: #dfe1e6; }
 .modal-title-input:focus { border-color: #4c9aff; outline: none; }
 .modal-path {
   font-size: 12px;
-  color: #5e6c84;
+  color: #97a0af;
   margin-bottom: 16px;
 }
 .modal-section {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .modal-section-title {
-  font-size: 12px;
-  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
   color: #5e6c84;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
+.modal-section-title .count {
+  font-size: 12px;
+  font-weight: 500;
+  color: #97a0af;
+}
+.modal-section.empty .modal-section-title { color: #97a0af; font-weight: 500; }
+.modal-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 20px;
+}
+.modal-meta-grid .modal-field-row { margin-bottom: 0; }
 .modal-field-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   margin-bottom: 8px;
 }
 .field-label {
@@ -1070,14 +1103,11 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-weight: 600;
   color: #5e6c84;
   margin-bottom: 4px;
-  text-transform: uppercase;
 }
 .modal-field-label {
   font-size: 12px;
   font-weight: 600;
   color: #5e6c84;
-  width: 80px;
-  flex-shrink: 0;
 }
 .modal-field-value {
   flex: 1;
@@ -1085,27 +1115,41 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 .modal-field-value input,
 .modal-field-value select {
   width: 100%;
-  padding: 4px 8px;
-  border: 1px solid #dfe1e6;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: #f4f5f7;
   border-radius: 4px;
+  font-size: 13px;
+  transition: background .12s, border-color .12s;
 }
+.modal-field-value input:hover,
+.modal-field-value select:hover { background: #ebecf0; }
 .modal-field-value input:focus,
-.modal-field-value select:focus { border-color: #4c9aff; outline: none; }
+.modal-field-value select:focus {
+  background: #fff;
+  border-color: #4c9aff;
+  outline: none;
+}
 
 /* Description */
 .desc-display {
   white-space: pre-wrap;
-  padding: 8px;
-  background: #f4f5f7;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #dfe1e6;
   border-radius: 4px;
   min-height: 60px;
-  cursor: pointer;
+  cursor: text;
   font-size: 14px;
+  line-height: 1.5;
   word-break: break-word;
+  transition: border-color .12s, background .12s;
 }
+.desc-display:hover { border-color: #b3bac5; }
 .desc-display:empty::after {
-  content: "Click to add description...";
-  color: #a5adba;
+  content: "Add a more detailed description…";
+  color: #97a0af;
+  font-style: italic;
 }
 .desc-edit textarea {
   width: 100%;
@@ -1172,10 +1216,23 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 
 /* Checklist */
+.checklist-progress {
+  height: 4px;
+  background: #ebecf0;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.checklist-progress-bar {
+  height: 100%;
+  background: #4c9aff;
+  transition: width .2s ease;
+}
+.checklist-progress-bar.complete { background: #36b37e; }
 .checklist-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 4px 0;
 }
 .checklist-item label {
@@ -1183,21 +1240,97 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   cursor: pointer;
   font-size: 14px;
 }
-.checklist-item.done label { text-decoration: line-through; color: #5e6c84; }
+.checklist-item.done label { text-decoration: line-through; color: #97a0af; }
 .checklist-item .remove-checklist-item {
   opacity: 0;
   transition: opacity 0.1s;
   border: none;
   background: none;
-  color: #e74c3c;
+  color: #97a0af;
   font-size: 16px;
   cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
 }
+.checklist-item .remove-checklist-item:hover { color: #b04632; background: #fff5f3; }
 .checklist-item:hover .remove-checklist-item { opacity: 1; }
 .add-item-row {
   display: flex;
   gap: 6px;
+  margin-top: 10px;
+}
+.add-item-row input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.add-item-row input:focus { border-color: #4c9aff; outline: none; }
+
+/* Ghost "+ Add ..." button used for optional sections */
+.btn-add {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 1px dashed #c1c7d0;
+  color: #5e6c84;
+  padding: 5px 10px; border-radius: 4px;
+  font-size: 12px; cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+}
+.btn-add:hover { border-color: #4c9aff; color: #0052cc; background: #f4f8ff; }
+
+/* Inline add-form (replaces prompt() popups) */
+.inline-form {
   margin-top: 8px;
+  padding: 10px 12px;
+  background: #f4f5f7;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inline-form label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5e6c84;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.inline-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  font-size: 13px;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+  background: #fff;
+}
+.inline-form input:focus { border-color: #4c9aff; outline: none; }
+.inline-form .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.inline-form .typeahead-results {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #dfe1e6;
+  border-radius: 4px;
+}
+.inline-form .typeahead-results:empty { display: none; }
+.inline-form .typeahead-result {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #f4f5f7;
+}
+.inline-form .typeahead-result:last-child { border-bottom: none; }
+.inline-form .typeahead-result:hover,
+.inline-form .typeahead-result.active { background: #f0f6ff; }
+.inline-form .typeahead-result .ta-title { font-size: 13px; color: #172b4d; }
+.inline-form .typeahead-result .ta-meta { font-size: 11px; color: #5e6c84; }
+.inline-form .typeahead-empty {
+  padding: 8px 10px; font-size: 12px; color: #97a0af; font-style: italic;
 }
 
 /* Custom fields */
@@ -1246,6 +1379,13 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   padding: 3px 0;
   font-size: 13px;
 }
+.relation-row .relation-link {
+  color: #0052cc; text-decoration: none; font-weight: 500;
+}
+.relation-row .relation-link:hover { text-decoration: underline; }
+.relation-row .relation-meta {
+  font-size: 12px; color: #97a0af; margin-left: 6px;
+}
 .relation-row .remove-rel {
   opacity: 0;
   transition: opacity 0.1s;
@@ -1258,32 +1398,51 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 
 /* Comments */
 .comment-item {
-  padding: 8px 0;
-  border-bottom: 1px solid #f4f5f7;
+  padding: 10px 0;
+  border-bottom: 1px solid #ebecf0;
 }
 .comment-item:last-child { border-bottom: none; }
 .comment-meta {
   font-size: 12px;
-  font-weight: 600;
   color: #5e6c84;
   margin-bottom: 4px;
 }
+.comment-meta .comment-author { font-weight: 600; color: #172b4d; }
+.comment-meta .comment-date { color: #97a0af; margin-left: 6px; }
 .comment-text {
   font-size: 14px;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+  color: #172b4d;
+}
+.desc-display a,
+.comment-text a {
+  color: #0052cc;
+  text-decoration: none;
+  word-break: break-all;
+}
+.desc-display a:hover,
+.comment-text a:hover { text-decoration: underline; }
+.add-comment-form {
+  margin-top: 12px;
 }
 .add-comment-form textarea {
   width: 100%;
   min-height: 60px;
-  padding: 8px;
+  padding: 8px 10px;
   border: 1px solid #dfe1e6;
   border-radius: 4px;
   resize: vertical;
   font-size: 13px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-family: inherit;
 }
 .add-comment-form textarea:focus { border-color: #4c9aff; outline: none; }
+.add-comment-form .post-row { display: flex; justify-content: flex-end; }
+#post-comment-btn:disabled {
+  background: #f4f5f7; color: #a5adba; border-color: #f4f5f7; cursor: not-allowed;
+}
 
 /* ── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1621,6 +1780,40 @@ function escHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// Render free-form text as HTML with links auto-detected. Supports:
+//   [label](url)            → <a href="url">label</a>
+//   http(s)://… or www.…    → <a href="…">…</a>
+// All non-link content is escaped first, so user content can't inject HTML.
+function linkifyHtml(str) {
+  if (!str) return '';
+  const out = [];
+  let i = 0;
+  // Match markdown links OR bare URLs in one pass to keep ordering intact.
+  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+)/g;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    if (m.index > i) out.push(escHtml(str.slice(i, m.index)));
+    if (m[1] !== undefined) {
+      // Markdown form
+      out.push(`<a href="${escHtml(m[2])}" target="_blank" rel="noopener noreferrer">${escHtml(m[1])}</a>`);
+    } else {
+      let url = m[3];
+      // Strip trailing punctuation that's almost always sentence punctuation
+      let trail = '';
+      while (url.length && '.,;:!?)'.includes(url[url.length - 1])) {
+        trail = url[url.length - 1] + trail;
+        url = url.slice(0, -1);
+      }
+      const href = url.startsWith('www.') ? 'https://' + url : url;
+      out.push(`<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">${escHtml(url)}</a>`);
+      if (trail) out.push(escHtml(trail));
+    }
+    i = m.index + m[0].length;
+  }
+  if (i < str.length) out.push(escHtml(str.slice(i)));
+  return out.join('');
 }
 
 function isOverdue(dateStr) {
@@ -2769,87 +2962,77 @@ function renderModal(card) {
   const description = parseDescription(card.body || '');
   const checklist = parseChecklistItems(card.body || '');
   const comments = parseComments(card.body || '');
-  const customFields = card.custom_fields && typeof card.custom_fields === 'object' ? card.custom_fields : {};
   const attachments = Array.isArray(card.attachments) ? card.attachments : [];
   const relations = Array.isArray(card.relations) ? card.relations : [];
 
   let html = '';
 
   // Title
-  html += `<input class="modal-title-input" id="modal-title" value="${escHtml(card.title)}" />`;
-  html += `<div class="modal-path">${escHtml(card.board)} / ${formatListName(card.list)} / ${escHtml(card.slug)}</div>`;
+  html += `<textarea class="modal-title-input" id="modal-title" rows="1" spellcheck="false">${escHtml(card.title)}</textarea>`;
+  html += `<div class="modal-path">${escHtml(card.board)} / ${formatListName(card.list)}</div>`;
 
-  // Fields row
-  html += `<div class="modal-section">
+  // Fields row (Assignee + Due Date as a 2-column grid)
+  html += `<div class="modal-meta-grid">
     <div class="modal-field-row">
       <span class="modal-field-label">Assignee</span>
       <div class="modal-field-value"><input id="modal-assignee" value="${escHtml(card.assignee || '')}" placeholder="Unassigned" /></div>
     </div>
     <div class="modal-field-row">
-      <span class="modal-field-label">Due Date</span>
+      <span class="modal-field-label">Due date</span>
       <div class="modal-field-value"><input type="date" id="modal-due" lang="de-DE" value="${escHtml(card.due || '')}" /></div>
     </div>
   </div>`;
 
   // Labels
-  html += `<div class="modal-section">
+  html += `<div class="modal-section${labels.length ? '' : ' empty'}">
     <div class="modal-section-title">Labels</div>
     <div class="modal-labels" id="modal-labels">`;
   for (const l of labels) {
     html += `<span class="modal-label-tag ${labelColorClass(l)}">${escHtml(l)} <button class="remove-label" data-label="${escHtml(l)}">&times;</button></span>`;
   }
-  html += `<input class="add-label-input" id="add-label-input" placeholder="Add label..." />`;
+  html += `<input class="add-label-input" id="add-label-input" placeholder="Add label…" />`;
   html += `</div></div>`;
 
   // Description
-  html += `<div class="modal-section">
+  html += `<div class="modal-section${description ? '' : ' empty'}">
     <div class="modal-section-title">Description</div>
     <div id="desc-container">
-      <div class="desc-display" id="desc-display">${escHtml(description)}</div>
+      <div class="desc-display" id="desc-display">${linkifyHtml(description)}</div>
     </div>
   </div>`;
 
-  // Checklist
-  html += `<div class="modal-section">
-    <div class="modal-section-title">Checklist</div>
-    <div id="checklist-items">`;
+  // Checklist (with progress)
+  const doneCount = checklist.filter(it => it.done).length;
+  const totalCount = checklist.length;
+  const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+  html += `<div class="modal-section${totalCount ? '' : ' empty'}">
+    <div class="modal-section-title">Checklist${totalCount ? `<span class="count">${doneCount} / ${totalCount}</span>` : ''}</div>`;
+  if (totalCount) {
+    html += `<div class="checklist-progress"><div class="checklist-progress-bar${pct === 100 ? ' complete' : ''}" style="width:${pct}%"></div></div>`;
+  }
+  html += `<div id="checklist-items">`;
   for (let i = 0; i < checklist.length; i++) {
     const item = checklist[i];
     html += `<div class="checklist-item${item.done ? ' done' : ''}">
       <input type="checkbox" data-index="${i}" ${item.done ? 'checked' : ''} />
       <label>${escHtml(item.text)}</label>
-      <button class="remove-checklist-item" data-index="${i}">&times;</button>
+      <button class="remove-checklist-item" data-index="${i}" title="Remove">&times;</button>
     </div>`;
   }
   html += `</div>
     <div class="add-item-row">
-      <input id="add-checklist-input" placeholder="Add item..." style="flex:1;padding:4px 8px;border:1px solid #dfe1e6;border-radius:4px;" />
-      <button class="btn-sm" id="add-checklist-btn">Add</button>
+      <input id="add-checklist-input" placeholder="Add an item…" />
+      <button class="btn-add" id="add-checklist-btn">+ Add</button>
     </div>
   </div>`;
 
-  // Custom Fields
-  html += `<div class="modal-section">
-    <div class="modal-section-title">Custom Fields</div>
-    <div id="custom-fields">`;
-  for (const [k, v] of Object.entries(customFields)) {
-    html += `<div class="custom-field-row">
-      <span class="cf-key">${escHtml(k)}:</span>
-      <span class="cf-value">${escHtml(String(v))}</span>
-      <button class="remove-cf" data-key="${escHtml(k)}">&times;</button>
-    </div>`;
-  }
-  html += `</div>
-    <button class="btn-sm" id="add-cf-btn">+ Add Field</button>
-  </div>`;
-
-  // Attachments
-  html += `<div class="modal-section">
-    <div class="modal-section-title">Attachments</div>
+  // Links (stored as `attachments` for backwards compat)
+  html += `<div class="modal-section${attachments.length ? '' : ' empty'}">
+    <div class="modal-section-title">Links</div>
     <div id="attachments">`;
   for (let i = 0; i < attachments.length; i++) {
     const att = attachments[i];
-    const name = typeof att === 'object' ? (att.name || att.url || 'Attachment') : att;
+    const name = typeof att === 'object' ? (att.name || att.url || 'Link') : att;
     const url = typeof att === 'object' ? (att.url || '#') : att;
     html += `<div class="attachment-row">
       <a href="${escHtml(url)}" target="_blank">${escHtml(name)}</a>
@@ -2857,40 +3040,48 @@ function renderModal(card) {
     </div>`;
   }
   html += `</div>
-    <button class="btn-sm" id="add-att-btn">+ Add Attachment</button>
+    <button class="btn-add" id="add-att-btn">+ Add link</button>
   </div>`;
 
-  // Relations
-  html += `<div class="modal-section">
-    <div class="modal-section-title">Relations</div>
+  // Related cards
+  html += `<div class="modal-section${relations.length ? '' : ' empty'}">
+    <div class="modal-section-title">Related cards</div>
     <div id="relations">`;
   for (let i = 0; i < relations.length; i++) {
+    const rel = relations[i];
+    const parts = typeof rel === 'string' ? rel.split('/') : [];
+    const isPath = parts.length === 3;
+    const display = isPath
+      ? `<a href="#" class="relation-link" data-board="${escHtml(parts[0])}" data-list="${escHtml(parts[1])}" data-slug="${escHtml(parts[2])}">${escHtml(parts[2])}</a> <span class="relation-meta">${escHtml(parts[0])} / ${escHtml(formatListName(parts[1]))}</span>`
+      : `<span>${escHtml(String(rel))}</span>`;
     html += `<div class="relation-row">
-      <span>${escHtml(relations[i])}</span>
+      ${display}
       <button class="remove-rel" data-index="${i}">&times;</button>
     </div>`;
   }
   html += `</div>
-    <button class="btn-sm" id="add-rel-btn">+ Add Relation</button>
+    <button class="btn-add" id="add-rel-btn">+ Add related card</button>
   </div>`;
 
   // Comments
-  html += `<div class="modal-section">
-    <div class="modal-section-title">Comments</div>
+  html += `<div class="modal-section${comments.length ? '' : ' empty'}">
+    <div class="modal-section-title">Comments${comments.length ? `<span class="count">${comments.length}</span>` : ''}</div>
     <div id="comments-list">`;
   for (const c of comments) {
     html += `<div class="comment-item">
-      <div class="comment-meta">${escHtml(c.date)} - ${escHtml(c.author)}</div>
-      <div class="comment-text">${escHtml(c.text)}</div>
+      <div class="comment-meta"><span class="comment-author">${escHtml(c.author)}</span><span class="comment-date">${escHtml(c.date)}</span></div>
+      <div class="comment-text">${linkifyHtml(c.text)}</div>
     </div>`;
   }
   html += `</div>
     <div class="add-comment-form">
-      <textarea id="comment-textarea" placeholder="Write a comment..."></textarea>
-      <button class="btn-sm primary" id="post-comment-btn">Post</button>
+      <textarea id="comment-textarea" placeholder="Write a comment…"></textarea>
+      <div class="post-row"><button class="btn-sm primary" id="post-comment-btn" disabled>Post</button></div>
     </div>
   </div>
-  <button class="modal-delete" id="delete-card-btn">&#128465; Delete Card</button>`;
+  <div class="modal-footer">
+    <button class="modal-delete" id="delete-card-btn" title="Delete this card">&#128465; Delete card</button>
+  </div>`;
 
   body.innerHTML = html;
 
@@ -2898,8 +3089,23 @@ function renderModal(card) {
 
   const cardPath = { board: card.board, list: card.list, slug: card.slug };
 
-  // Title save on blur
-  document.getElementById('modal-title').addEventListener('blur', async (e) => {
+  // Title: auto-grow textarea, Enter saves (Shift+Enter for newline)
+  const titleEl = document.getElementById('modal-title');
+  const autosizeTitle = () => {
+    titleEl.style.height = 'auto';
+    titleEl.style.height = titleEl.scrollHeight + 'px';
+  };
+  // Defer initial sizing until after layout — scrollHeight is wrong if the
+  // modal hasn't been laid out yet (returns single-line height).
+  requestAnimationFrame(autosizeTitle);
+  titleEl.addEventListener('input', autosizeTitle);
+  titleEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      titleEl.blur();
+    }
+  });
+  titleEl.addEventListener('blur', async (e) => {
     const newTitle = e.target.value.trim();
     if (newTitle && newTitle !== card.title) {
       await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { title: newTitle });
@@ -2952,9 +3158,10 @@ function renderModal(card) {
     }
   });
 
-  // Description toggle edit
+  // Description toggle edit (but let link clicks pass through to the browser)
   const descDisplay = document.getElementById('desc-display');
-  descDisplay.addEventListener('click', () => {
+  descDisplay.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;
     const container = document.getElementById('desc-container');
     container.innerHTML = `
       <div class="desc-edit">
@@ -3023,40 +3230,65 @@ function renderModal(card) {
   addCheckInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addChecklistItem(); });
 
   // Custom fields
-  document.getElementById('add-cf-btn').addEventListener('click', async () => {
-    const key = prompt('Field name:');
-    if (!key) return;
-    const value = prompt('Field value:');
-    if (value === null) return;
-    customFields[key] = value;
-    const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { custom_fields: customFields });
-    state.modalCard = updated;
-    renderModal(updated);
-    refreshCurrentView();
-  });
-  body.querySelectorAll('.remove-cf').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const key = btn.dataset.key;
-      delete customFields[key];
-      const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { custom_fields: customFields });
-      state.modalCard = updated;
-      renderModal(updated);
-      refreshCurrentView();
-    });
-  });
+  // Replace the trigger button with an inline form. On submit, calls onSubmit
+  // with the field values keyed by name. On cancel, restores the original button.
+  const showInlineForm = (triggerEl, fields, onSubmit) => {
+    if (!triggerEl) return;
+    const form = document.createElement('div');
+    form.className = 'inline-form';
+    form.innerHTML = fields.map((f, i) => `
+      <div>
+        <label>${escHtml(f.label)}</label>
+        <input data-name="${escHtml(f.name)}" placeholder="${escHtml(f.placeholder || '')}" ${i === 0 ? 'autofocus' : ''} />
+      </div>
+    `).join('') + `
+      <div class="actions">
+        <button class="btn-sm" data-act="cancel">Cancel</button>
+        <button class="btn-sm primary" data-act="save">Add</button>
+      </div>`;
+    triggerEl.replaceWith(form);
+    const inputs = form.querySelectorAll('input');
+    inputs[0]?.focus();
 
-  // Attachments
-  document.getElementById('add-att-btn').addEventListener('click', async () => {
-    const name = prompt('Attachment name:');
-    if (!name) return;
-    const url = prompt('Attachment URL:');
-    if (!url) return;
-    attachments.push({ name, url });
-    const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { attachments });
+    const restore = () => form.replaceWith(triggerEl);
+    const submit = async () => {
+      const values = {};
+      for (const inp of inputs) values[inp.dataset.name] = inp.value.trim();
+      const required = fields.find(f => f.required !== false);
+      if (required && !values[required.name]) { inputs[0]?.focus(); return; }
+      await onSubmit(values);
+    };
+    form.querySelector('[data-act="cancel"]').addEventListener('click', restore);
+    form.querySelector('[data-act="save"]').addEventListener('click', submit);
+    inputs.forEach(inp => inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); restore(); }
+    }));
+  };
+
+  const saveCard = async (patch) => {
+    const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, patch);
     state.modalCard = updated;
     renderModal(updated);
     refreshCurrentView();
-  });
+  };
+
+  // Custom-fields support intentionally removed from the UI; legacy data on
+  // disk is preserved by the server but no longer surfaced or editable here.
+
+  // Links (stored as `attachments` for backwards compat)
+  const addAttachment = (triggerEl) => {
+    showInlineForm(triggerEl, [
+      { name: 'name', label: 'Name', placeholder: 'Display text' },
+      { name: 'url', label: 'URL', placeholder: 'https://…' },
+    ], async ({ name, url }) => {
+      if (!url) return;
+      attachments.push({ name, url });
+      await saveCard({ attachments });
+    });
+  };
+  const attBtn = document.getElementById('add-att-btn');
+  attBtn?.addEventListener('click', () => addAttachment(attBtn));
   body.querySelectorAll('.remove-att').forEach(btn => {
     btn.addEventListener('click', async () => {
       const idx = parseInt(btn.dataset.index, 10);
@@ -3068,16 +3300,99 @@ function renderModal(card) {
     });
   });
 
-  // Relations
-  document.getElementById('add-rel-btn').addEventListener('click', async () => {
-    const rel = prompt('Relation (e.g. board/list/card):');
-    if (!rel) return;
-    relations.push(rel);
-    const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { relations });
-    state.modalCard = updated;
-    renderModal(updated);
-    refreshCurrentView();
-  });
+  // Relations — typeahead picker over /api/search
+  const addRelation = (triggerEl) => {
+    if (!triggerEl) return;
+    const form = document.createElement('div');
+    form.className = 'inline-form';
+    form.innerHTML = `
+      <div>
+        <label>Search cards</label>
+        <input data-name="q" placeholder="Type to search…" autofocus />
+      </div>
+      <div class="typeahead-results" data-results></div>
+      <div class="actions">
+        <button class="btn-sm" data-act="cancel">Cancel</button>
+      </div>`;
+    triggerEl.replaceWith(form);
+    const input = form.querySelector('input');
+    const results = form.querySelector('[data-results]');
+    input.focus();
+
+    const restore = () => form.replaceWith(triggerEl);
+    form.querySelector('[data-act="cancel"]').addEventListener('click', restore);
+
+    let active = -1;
+    let current = [];
+    const ownPath = `${cardPath.board}/${cardPath.list}/${cardPath.slug}`;
+
+    const pick = async (r) => {
+      const rel = `${r.board}/${r.list}/${r.slug}`;
+      if (relations.includes(rel)) { restore(); return; }
+      relations.push(rel);
+      await saveCard({ relations });
+    };
+
+    const render = () => {
+      if (!current.length) {
+        results.innerHTML = input.value.trim()
+          ? `<div class="typeahead-empty">No matches.</div>`
+          : '';
+        return;
+      }
+      results.innerHTML = current.map((r, i) => `
+        <div class="typeahead-result${i === active ? ' active' : ''}" data-i="${i}">
+          <div class="ta-title">${escHtml(r.title)}</div>
+          <div class="ta-meta">${escHtml(r.board)} / ${escHtml(formatListName(r.list))}${r.assignee ? ' · ' + escHtml(r.assignee) : ''}</div>
+        </div>
+      `).join('');
+      results.querySelectorAll('.typeahead-result').forEach(el => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          pick(current[parseInt(el.dataset.i, 10)]);
+        });
+      });
+    };
+
+    let searchTimer = null;
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const q = input.value.trim();
+      active = -1;
+      if (!q) { current = []; render(); return; }
+      searchTimer = setTimeout(async () => {
+        try {
+          const raw = await api.get('/api/search?q=' + encodeURIComponent(q));
+          // Filter out this card and any already-related cards
+          current = raw.filter(r => {
+            const path = `${r.board}/${r.list}/${r.slug}`;
+            return path !== ownPath && !relations.includes(path);
+          });
+          render();
+        } catch {
+          current = []; render();
+        }
+      }, 200);
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); restore(); }
+      else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (current.length) { active = (active + 1) % current.length; render(); }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (current.length) { active = (active - 1 + current.length) % current.length; render(); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (active >= 0 && current[active]) pick(current[active]);
+        else if (current.length === 1) pick(current[0]);
+      }
+    });
+  };
+  const relBtn = document.getElementById('add-rel-btn');
+  relBtn?.addEventListener('click', () => addRelation(relBtn));
+
   body.querySelectorAll('.remove-rel').forEach(btn => {
     btn.addEventListener('click', async () => {
       const idx = parseInt(btn.dataset.index, 10);
@@ -3088,10 +3403,21 @@ function renderModal(card) {
       refreshCurrentView();
     });
   });
+  body.querySelectorAll('.relation-link').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      openCardModal(a.dataset.board, a.dataset.list, a.dataset.slug);
+    });
+  });
 
   // Comments
-  document.getElementById('post-comment-btn').addEventListener('click', async () => {
-    const text = document.getElementById('comment-textarea').value.trim();
+  const commentTextarea = document.getElementById('comment-textarea');
+  const postBtn = document.getElementById('post-comment-btn');
+  commentTextarea.addEventListener('input', () => {
+    postBtn.disabled = commentTextarea.value.trim().length === 0;
+  });
+  postBtn.addEventListener('click', async () => {
+    const text = commentTextarea.value.trim();
     if (!text) return;
     const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { comment: text });
     state.modalCard = updated;
