@@ -1538,6 +1538,25 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   text-decoration: line-through;
   cursor: not-allowed;
 }
+.wikilink-popup {
+  position: fixed;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 1000;
+  max-width: 400px;
+}
+.wikilink-popup-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wikilink-popup-item:hover {
+  background: #eef;
+}
 </style>
 </head>
 <body>
@@ -1879,6 +1898,60 @@ function escHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function attachWikilinkTypeahead(textareaEl) {
+  let popup = null;
+
+  function close() {
+    if (popup) { popup.remove(); popup = null; }
+  }
+
+  textareaEl.addEventListener('input', () => {
+    const pos = textareaEl.selectionStart;
+    const before = textareaEl.value.slice(0, pos);
+    const m = before.match(/\[\[([\w\-\s]*)$/);
+    if (!m) { close(); return; }
+    const query = m[1].toLowerCase();
+
+    // Filter idIndex entries by id-substring or title-substring.
+    const matches = [];
+    for (const [id, entry] of state.idIndex) {
+      if (matches.length >= 8) break;
+      if (id.toLowerCase().includes(query) || entry.title.toLowerCase().includes(query)) {
+        matches.push({ id, ...entry });
+      }
+    }
+    if (!matches.length) { close(); return; }
+
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.className = 'wikilink-popup';
+      document.body.appendChild(popup);
+    }
+    popup.innerHTML = matches.map(c =>
+      `<div class="wikilink-popup-item" data-id="${escHtml(c.id)}">
+         <strong>${escHtml(c.id)}</strong> ${escHtml(c.title)}
+       </div>`).join('');
+
+    // Position below the textarea (rough positioning).
+    const r = textareaEl.getBoundingClientRect();
+    popup.style.left = `${r.left}px`;
+    popup.style.top = `${r.bottom + 4}px`;
+
+    popup.onclick = (e) => {
+      const item = e.target.closest('.wikilink-popup-item');
+      if (!item) return;
+      const id = item.dataset.id;
+      const newBefore = before.replace(/\[\[[\w\-\s]*$/, `[[${id}]]`);
+      const after = textareaEl.value.slice(pos);
+      textareaEl.value = newBefore + after;
+      textareaEl.selectionStart = textareaEl.selectionEnd = newBefore.length;
+      close();
+    };
+  });
+
+  textareaEl.addEventListener('blur', () => setTimeout(close, 150));
 }
 
 // Render free-form text as HTML with links auto-detected. Supports:
@@ -3310,7 +3383,9 @@ function renderModal(card) {
           <button class="btn-sm" id="desc-cancel">Cancel</button>
         </div>
       </div>`;
-    document.getElementById('desc-textarea').focus();
+    const descTextarea = document.getElementById('desc-textarea');
+    descTextarea.focus();
+    attachWikilinkTypeahead(descTextarea);
     document.getElementById('desc-save').addEventListener('click', async () => {
       const newDesc = document.getElementById('desc-textarea').value;
       const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { description: newDesc });
@@ -3552,6 +3627,7 @@ function renderModal(card) {
   // Comments
   const commentTextarea = document.getElementById('comment-textarea');
   const postBtn = document.getElementById('post-comment-btn');
+  attachWikilinkTypeahead(commentTextarea);
   commentTextarea.addEventListener('input', () => {
     postBtn.disabled = commentTextarea.value.trim().length === 0;
   });
