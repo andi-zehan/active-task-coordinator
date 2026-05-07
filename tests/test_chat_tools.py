@@ -2,6 +2,7 @@
 """Tests for chat_tools module."""
 
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -152,6 +153,39 @@ class TestFindByAssignee(BucketToolsBase):
                   card_body("M", assignee="Maria"))
         out = chat_tools._tool_find_by_assignee({"name": "maria"})
         self.assertEqual(out["cards"], [])
+
+
+class TestGetCardById(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.orig_data_dir = server.DATA_DIR
+        server.DATA_DIR = Path(self.tmp) / "data"
+        server.ensure_data_dir()
+        server.reset_id_index()
+        server.write_board_meta("b", {"name": "B", "color": "#000"})
+
+    def tearDown(self):
+        server.DATA_DIR = self.orig_data_dir
+        shutil.rmtree(self.tmp)
+
+    def test_get_card_by_id_returns_card(self):
+        server.write_card("b", "ideas", "C-1", {
+            "id": "C-1", "title": "Hello", "labels": [], "due": "",
+            "assignee": "", "created": "2026-05-07", "updated": "2026-05-07",
+            "relations": [], "custom_fields": {}, "attachments": [],
+        }, "## Description\n\nbody\n")
+        order = server.DATA_DIR / "boards" / "b" / "ideas" / "_order.json"
+        order.write_text('["C-1"]', encoding="utf-8")
+        server.register_id("C-1", "b", "ideas")
+
+        result = chat_tools.READ_TOOLS["get_card_by_id"]({"id": "C-1"})
+        self.assertEqual(result["title"], "Hello")
+        self.assertEqual(result["board"], "b")
+        self.assertEqual(result["list"], "ideas")
+
+    def test_get_card_by_id_unknown(self):
+        result = chat_tools.READ_TOOLS["get_card_by_id"]({"id": "C-99"})
+        self.assertEqual(result, {"error": "unknown id: C-99"})
 
 
 if __name__ == "__main__":

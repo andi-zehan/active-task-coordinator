@@ -156,6 +156,15 @@ READ_TOOL_DEFS = [
             "required": ["name"],
         },
     },
+    {
+        "name": "get_card_by_id",
+        "description": "Look up a card by its global ID (e.g. C-12). Returns the same shape as read_card.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": "string"}},
+            "required": ["id"],
+        },
+    },
 ]
 
 # --- Write-tool definitions ---
@@ -422,6 +431,37 @@ def _tool_find_by_assignee(args: dict) -> dict:
     return {"cards": out}
 
 
+def _resolve_id(card_id: str):
+    """Return (board, list) for the given id, or None."""
+    import server
+    return server.resolve_id(card_id)
+
+
+def _tool_get_card_by_id(args: dict) -> dict:
+    import server
+    located = _resolve_id(args["id"])
+    if located is None:
+        return {"error": f"unknown id: {args['id']}"}
+    board, list_slug = located
+    card = server.read_card(board, list_slug, args["id"])
+    if card is None:
+        return {"error": f"unknown id: {args['id']}"}
+    todo, done = _parse_checklist(card.get("body", ""))
+    return {
+        "id": args["id"],
+        "board": board,
+        "list": list_slug,
+        "title": card.get("title", ""),
+        "labels": card.get("labels") or [],
+        "due": card.get("due", ""),
+        "assignee": card.get("assignee", ""),
+        "description": _extract_description(card.get("body", "")),
+        "checklist_todo": todo,
+        "checklist_done": done,
+        "body": card.get("body", ""),
+    }
+
+
 # --- Write-tool dispatch (queues, doesn't execute) ---
 
 _WRITE_OP_NAMES = {
@@ -446,6 +486,7 @@ READ_TOOLS = {
     "list_due_this_week": _tool_list_due_this_week,
     "find_by_label": _tool_find_by_label,
     "find_by_assignee": _tool_find_by_assignee,
+    "get_card_by_id": _tool_get_card_by_id,
 }
 
 
