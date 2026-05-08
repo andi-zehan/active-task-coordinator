@@ -67,7 +67,10 @@
       "Bash(rm ~/.atc/config.json)",
       "Bash(.venv/Scripts/python.exe -c \"import server; print\\('DATA_DIR=', server.DATA_DIR\\); import os; print\\('exists?', os.path.exists\\(server.DATA_DIR\\)\\)\")",
       "Bash(mv ~/.atc/config.json.dev-backup ~/.atc/config.json)",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(gh release create v0.1.0 dist/Flow-v0.1.0.zip --title 'Flow v0.1.0' --target release/v0.1 --notes ' *)",
+      "Bash(where gh *)",
+      "Bash(gh.exe --version)"
     ]
   }
 }
