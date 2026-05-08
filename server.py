@@ -156,6 +156,51 @@ def unregister_id(card_id: str) -> None:
         _ID_INDEX.pop(card_id, None)
 
 
+def _sync_back_relations(card_id: str, old_rels, new_rels) -> None:
+    """Mirror relation changes on the other side so links stay bidirectional."""
+    old_set = set(old_rels or [])
+    new_set = set(new_rels or [])
+    added = new_set - old_set
+    removed = old_set - new_set
+    today_str = str(date.today())
+    for other_id in added:
+        if other_id == card_id:
+            continue
+        loc = resolve_id(other_id)
+        if not loc:
+            continue
+        other_board, other_list = loc
+        other = read_card(other_board, other_list, other_id)
+        if not other:
+            continue
+        rels = list(other.get('relations') or [])
+        if card_id in rels:
+            continue
+        rels.append(card_id)
+        other['relations'] = rels
+        other['updated'] = today_str
+        meta = {k: v for k, v in other.items() if k not in ('slug', 'board', 'list', 'body')}
+        write_card(other_board, other_list, other_id, meta, other.get('body', ''))
+    for other_id in removed:
+        if other_id == card_id:
+            continue
+        loc = resolve_id(other_id)
+        if not loc:
+            continue
+        other_board, other_list = loc
+        other = read_card(other_board, other_list, other_id)
+        if not other:
+            continue
+        rels = list(other.get('relations') or [])
+        if card_id not in rels:
+            continue
+        rels = [r for r in rels if r != card_id]
+        other['relations'] = rels
+        other['updated'] = today_str
+        meta = {k: v for k, v in other.items() if k not in ('slug', 'board', 'list', 'body')}
+        write_card(other_board, other_list, other_id, meta, other.get('body', ''))
+
+
 def parse_frontmatter(text):
     match = re.match(r'^---[^\S\n]*\n(.*?)\n---[^\S\n]*\n(.*)', text, re.DOTALL)
     if not match:
@@ -700,6 +745,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             order.append(card_id)
         write_json(order_path, order)
         register_id(card_id, board_slug, list_slug)
+        _sync_back_relations(card_id, [], meta['relations'])
         meta['slug'] = card_id
         meta['board'] = board_slug
         meta['list'] = list_slug
@@ -717,6 +763,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return self._send_error(404, 'Card not found')
         data = self._read_body()
         body = card.get('body', '')
+        old_relations = list(card.get('relations') or [])
 
         # Update frontmatter fields
         for field in ('title', 'assignee', 'labels', 'due', 'relations',
@@ -749,19 +796,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         card['updated'] = str(date.today())
         meta = {k: v for k, v in card.items() if k not in ('slug', 'board', 'list', 'body')}
         write_card(board_slug, list_slug, card_slug, meta, body)
+        if 'relations' in data:
+            card_id = card.get('id') or card_slug
+            _sync_back_relations(card_id, old_relations, card['relations'])
         card['body'] = body
         self._send_json(card)
 
     def _handle_delete_card(self, board_slug, list_slug, card_slug):
-        card_path = DATA_DIR / "boards" / board_slug / list_slug / f"{card_slug}.md"
-        if not card_path.exists():
+        card = read_card(board_slug, list_slug, card_slug)
+        if card is None:
             return self._send_error(404, 'Card not found')
+        card_id = card.get('id') or card_slug
+        old_relations = list(card.get('relations') or [])
+        card_path = DATA_DIR / "boards" / board_slug / list_slug / f"{card_slug}.md"
         card_path.unlink()
         order_path = DATA_DIR / "boards" / board_slug / list_slug / "_order.json"
         order = read_json(order_path)
         order = [s for s in order if s != card_slug]
         write_json(order_path, order)
         unregister_id(card_slug)
+        _sync_back_relations(card_id, old_relations, [])
         self._send_json({'deleted': card_slug})
 
     def _handle_move_card(self, board_slug, list_slug, card_slug):
@@ -848,19 +902,33 @@ class RequestHandler(BaseHTTPRequestHandler):
         q = query_params.get('q', [''])[0].lower().strip()
         if not q:
             return self._send_json([])
-        all_cards = self._get_all_cards()
         results = []
-        for card in all_cards:
-            title = str(card.get('title', '')).lower()
-            description = str(card.get('description', '')).lower()
-            assignee = str(card.get('assignee', '')).lower()
-            labels_raw = card.get('labels', [])
-            if not isinstance(labels_raw, list):
-                labels_raw = []
-            labels = [str(l).lower() for l in labels_raw]
-            if (q in title or q in description or q in assignee
-                    or any(q in l for l in labels)):
-                results.append(card)
+        boards_dir = DATA_DIR / "boards"
+        if not boards_dir.exists():
+            return self._send_json(results)
+        for board_dir in boards_dir.iterdir():
+            if not board_dir.is_dir():
+                continue
+            for list_name in LISTS:
+                list_dir = board_dir / list_name
+                if not list_dir.exists():
+                    continue
+                order = read_json(list_dir / "_order.json")
+                for card_slug in order:
+                    card = read_card(board_dir.name, list_name, card_slug)
+                    if not card:
+                        continue
+                    title = str(card.get('title', '')).lower()
+                    card_id = str(card.get('id', '')).lower()
+                    description = ''
+                    m = re.search(
+                        r'## Description\n\n(.*?)(?=\n+## |\Z)',
+                        card.get('body', ''), flags=re.DOTALL,
+                    )
+                    if m:
+                        description = m.group(1).strip().lower()
+                    if q in title or q in description or q in card_id:
+                        results.append({k: v for k, v in card.items() if k != 'body'})
         self._send_json(results)
 
     def _handle_sync_push(self):

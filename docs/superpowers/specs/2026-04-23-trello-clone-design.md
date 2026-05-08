@@ -80,7 +80,7 @@ Talked to backend team, API will be ready by Friday.
 ```
 
 - **Card slug** = filename without `.md`, derived from the title on creation (kebab-case).
-- **Relations** use relative paths: `board-slug/list-slug/card-slug`. Bidirectional — if card A lists card B in its relations, card B should list card A.
+- **Relations** use stable card IDs (`C-N`). Bidirectional — adding `C-B` to card A's `relations` automatically appends `C-A` to card B; removing it (via edit or by deleting card A) removes the back-reference. Self-references and unresolved IDs are skipped.
 - **Checklists** use standard markdown checkboxes.
 - **Comments** are inline in the card body, formatted as bold date/author lines.
 - **Attachments** are links only — no file storage managed by the app.
@@ -121,16 +121,16 @@ A single Python script (`server.py`) using only the standard library (`http.serv
 | `POST` | `/api/boards` | Create a new board |
 | `GET` | `/api/boards/:board` | Get board details and all its cards |
 | `PUT` | `/api/boards/:board` | Update board metadata |
-| `DELETE` | `/api/boards/:board` | Delete a board and all its cards. Stale relations in other cards are left as-is (they render as "not found" in the UI). |
+| `DELETE` | `/api/boards/:board` | Delete a board and all its cards. Relations to deleted cards from other boards are left as-is (they render as "not found" in the UI). |
 | `GET` | `/api/boards/:board/lists/:list/cards` | List cards in a specific list |
 | `POST` | `/api/boards/:board/lists/:list/cards` | Create a new card |
 | `GET` | `/api/cards/:board/:list/:card` | Read a single card |
 | `PUT` | `/api/cards/:board/:list/:card` | Update a card |
-| `DELETE` | `/api/cards/:board/:list/:card` | Delete a card. Removes it from `_order.json`. Stale relations in other cards are left as-is. |
+| `DELETE` | `/api/cards/:board/:list/:card` | Delete a card. Removes it from `_order.json` and removes its ID from the `relations` list of every other card that pointed to it. |
 | `PUT` | `/api/cards/:board/:list/:card/move` | Move a card to another list/position |
 | `GET` | `/api/dashboard` | Cards due today and this week, across all boards |
 | `GET` | `/api/calendar/:year/:month` | Cards with due dates in a given month |
-| `GET` | `/api/search?q=...` | Search cards by title, description, assignee, labels |
+| `GET` | `/api/search?q=...` | Search cards by title, description, and card ID |
 
 ### Launch
 

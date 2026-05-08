@@ -78,7 +78,7 @@ When the user types `[[` in description or comment editors, a typeahead popup sh
 relations: [C-2, C-7]
 ```
 
-Renders the same chip style as today, looked up via the in-memory ID index. Bidirectional invariant from instructions.md:171 still applies — explicit on both sides. No automatic backlink derivation in this scope.
+Renders the same chip style as today, looked up via the in-memory ID index. Bidirectional invariant from instructions.md:171 is now enforced server-side: `POST`, `PUT`, and `DELETE` on a card mirror relation changes onto the linked cards automatically (add/remove of the back-reference, with self-references and unresolved IDs skipped).
 
 ### Agent tool surface
 

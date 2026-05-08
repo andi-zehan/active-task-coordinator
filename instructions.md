@@ -176,7 +176,9 @@ Change `- [ ]` to `- [x]` or vice versa in the `## Checklist` section.
 
 ### Add a relation
 
-Relations are bidirectional. When linking card A to card B:
+Relations are bidirectional. When linking card A to card B via the API (`PUT /api/cards/...` or `POST` for a new card), the server mirrors the change automatically — adding `C-B` to card A's `relations` appends `C-A` to card B, and removing it (including via card deletion) removes the back-reference. Self-references and unresolved IDs are skipped.
+
+If you are editing markdown files directly (bypassing the API):
 
 1. Add card B's id (e.g. `C-7`) to card A's `relations` list
 2. Add card A's id to card B's `relations` list

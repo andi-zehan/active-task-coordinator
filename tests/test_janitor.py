@@ -144,6 +144,60 @@ class TestSweepDoneCards(unittest.TestCase):
         )
         self.assertFalse((self.notes_dir / f"{note_id}.md").exists())
 
+    def _make_card_with_id(self, board, lst, card_id, *, updated, relations=None):
+        """Create a card with id + relations, register it in the index."""
+        list_dir = self.data_dir / "boards" / board / lst
+        list_dir.mkdir(parents=True, exist_ok=True)
+        rels = relations or []
+        rels_str = "[" + ", ".join(rels) + "]"
+        (list_dir / f"{card_id}.md").write_text(
+            f"---\nid: {card_id}\ntitle: {card_id}\ncreated: 2026-01-01\n"
+            f"updated: {updated}\nrelations: {rels_str}\nattachments: []\n---\n\n"
+            f"## Description\n\n\n\n## Checklist\n\n\n## Comments\n\n",
+            encoding="utf-8",
+        )
+        order_file = list_dir / "_order.json"
+        order = json.loads(order_file.read_text()) if order_file.exists() else []
+        if card_id not in order:
+            order.append(card_id)
+            order_file.write_text(json.dumps(order), encoding="utf-8")
+        server.register_id(card_id, board, lst)
+
+    def test_archive_strips_back_references_on_live_cards(self):
+        server.reset_id_index()
+        old = (date.today() - timedelta(days=20)).isoformat()
+        recent = (date.today() - timedelta(days=2)).isoformat()
+        # C-1 lives in done (will be archived), C-2 is live and points back at it.
+        self._make_card_with_id("alpha", "done", "C-1", updated=old, relations=["C-2"])
+        self._make_card_with_id("alpha", "backlog", "C-2", updated=recent,
+                                 relations=["C-1"])
+        janitor.sweep_done_cards()
+        live = server.read_card("alpha", "backlog", "C-2")
+        self.assertEqual(live["relations"], [])
+
+    def test_archived_card_keeps_outgoing_relations(self):
+        server.reset_id_index()
+        old_date = date.today() - timedelta(days=20)
+        recent = (date.today() - timedelta(days=2)).isoformat()
+        self._make_card_with_id("alpha", "done", "C-1",
+                                 updated=old_date.isoformat(), relations=["C-2"])
+        self._make_card_with_id("alpha", "backlog", "C-2", updated=recent,
+                                 relations=["C-1"])
+        janitor.sweep_done_cards()
+        bucket = old_date.strftime("%Y-%m")
+        archived_text = (
+            self.data_dir / f"_archive/alpha/{bucket}/C-1.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("C-2", archived_text)
+
+    def test_archive_unregisters_id(self):
+        server.reset_id_index()
+        old = (date.today() - timedelta(days=20)).isoformat()
+        self._make_card_with_id("alpha", "done", "C-1", updated=old)
+        self.assertIsNotNone(server.resolve_id("C-1"))
+        janitor.sweep_done_cards()
+        self.assertIsNone(server.resolve_id("C-1"))
+
     def test_orphan_sweep_does_not_touch_archived_notes(self):
         """Note moved into archive should survive a subsequent orphan sweep."""
         old_date = date.today() - timedelta(days=20)

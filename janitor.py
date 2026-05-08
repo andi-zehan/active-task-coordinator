@@ -46,15 +46,23 @@ def _referenced_note_ids(card: dict) -> list[str]:
 
 
 def _archive_card(board: str, slug: str, updated: date) -> None:
-    """Move card .md and its referenced notes into data/_archive/<board>/<YYYY-MM>/."""
+    """Move card .md and its referenced notes into data/_archive/<board>/<YYYY-MM>/.
+
+    Also strips back-references on live cards that pointed to this one — once
+    archived, the card is invisible to the live board, so its ID should no
+    longer appear in any live card's `relations` list. The archived card keeps
+    its own outgoing relations as a frozen snapshot.
+    """
     bucket = updated.strftime("%Y-%m")
     dest_dir = _archive_root() / board / bucket
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     card_src = server.DATA_DIR / "boards" / board / "done" / f"{slug}.md"
-    # Read referenced notes before moving the card file.
+    # Read referenced notes and outgoing relations before moving the card file.
     card = server.read_card(board, "done", slug)
     note_ids = _referenced_note_ids(card) if card else []
+    card_id = (card.get("id") if card else None) or slug
+    outgoing = list((card.get("relations") if card else None) or [])
 
     shutil.move(str(card_src), str(dest_dir / f"{slug}.md"))
 
@@ -65,6 +73,9 @@ def _archive_card(board: str, slug: str, updated: date) -> None:
             note_src = NOTES_DIR / f"{note_id}.md"
             if note_src.exists():
                 shutil.move(str(note_src), str(notes_dest / f"{note_id}.md"))
+
+    server.unregister_id(card_id)
+    server._sync_back_relations(card_id, outgoing, [])
 
 
 def sweep_done_cards() -> int:

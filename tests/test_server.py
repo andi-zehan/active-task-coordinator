@@ -176,6 +176,118 @@ class TestIdIndex(unittest.TestCase):
         self.assertIsNone(server.resolve_id("C-42"))
 
 
+class TestBidirectionalRelations(unittest.TestCase):
+    """Adding/removing a relation on one card mirrors onto the other."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.orig_data_dir = server.DATA_DIR
+        server.DATA_DIR = Path(self.tmp) / "data"
+        server.ensure_data_dir()
+        server.reset_id_index()
+
+    def tearDown(self):
+        server.DATA_DIR = self.orig_data_dir
+        shutil.rmtree(self.tmp)
+
+    def _write_card(self, board, list_slug, card_id, *, relations=None):
+        server.write_board_meta(board, {"name": board, "color": "#000"})
+        meta = {
+            "id": card_id, "title": card_id, "labels": [], "due": "",
+            "assignee": "", "created": "2026-05-07", "updated": "2026-05-07",
+            "relations": list(relations or []),
+            "custom_fields": {}, "attachments": [],
+        }
+        server.write_card(board, list_slug, card_id, meta, "## Description\n\n")
+        order_path = server.DATA_DIR / "boards" / board / list_slug / "_order.json"
+        order = server.read_json(order_path) or []
+        if card_id not in order:
+            order.append(card_id)
+        server.write_json(order_path, order)
+        server.register_id(card_id, board, list_slug)
+
+    def test_adding_relation_appears_on_other_card(self):
+        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "ideas", "C-2")
+        server._sync_back_relations("C-1", [], ["C-2"])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["relations"], ["C-1"])
+
+    def test_removing_relation_removes_back_reference(self):
+        self._write_card("b", "ideas", "C-1", relations=["C-2"])
+        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        server._sync_back_relations("C-1", ["C-2"], [])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["relations"], [])
+
+    def test_adding_does_not_duplicate_existing_back_reference(self):
+        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        server._sync_back_relations("C-1", [], ["C-2"])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["relations"], ["C-1"])
+
+    def test_unresolved_id_is_skipped(self):
+        self._write_card("b", "ideas", "C-1")
+        # No card C-99 exists; sync must not raise.
+        server._sync_back_relations("C-1", [], ["C-99"])
+        # And no spurious file was created.
+        self.assertIsNone(server.resolve_id("C-99"))
+
+    def test_self_reference_is_ignored(self):
+        self._write_card("b", "ideas", "C-1")
+        server._sync_back_relations("C-1", [], ["C-1"])
+        card = server.read_card("b", "ideas", "C-1")
+        # We did not re-add C-1 onto itself via the back-sync path.
+        self.assertEqual(card["relations"], [])
+
+    def test_works_across_boards_and_lists(self):
+        self._write_card("ba", "ideas", "C-1")
+        self._write_card("bb", "backlog", "C-2")
+        server._sync_back_relations("C-1", [], ["C-2"])
+        other = server.read_card("bb", "backlog", "C-2")
+        self.assertEqual(other["relations"], ["C-1"])
+
+    def test_back_reference_bumps_updated_date(self):
+        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "ideas", "C-2")
+        # C-2 was written with updated=2026-05-07; the sync should set it to today.
+        server._sync_back_relations("C-1", [], ["C-2"])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["updated"], str(date.today()))
+
+    def test_deleting_card_clears_back_references(self):
+        self._write_card("b", "ideas", "C-1", relations=["C-2"])
+        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        # Simulate the delete handler's sync step.
+        server._sync_back_relations("C-1", ["C-2"], [])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["relations"], [])
+
+    def test_delete_with_no_relations_is_noop(self):
+        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "ideas", "C-2")
+        server._sync_back_relations("C-1", [], [])
+        other = server.read_card("b", "ideas", "C-2")
+        self.assertEqual(other["relations"], [])
+
+    def test_update_card_handler_writes_back_reference(self):
+        """End-to-end via _handle_update_card: editing C-1 must mutate C-2 on disk."""
+        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "ideas", "C-2")
+        # Simulate the slice of _handle_update_card relevant to relations:
+        card = server.read_card("b", "ideas", "C-1")
+        old_relations = list(card.get("relations") or [])
+        card["relations"] = ["C-2"]
+        card["updated"] = str(date.today())
+        meta = {k: v for k, v in card.items() if k not in ("slug", "board", "list", "body")}
+        server.write_card("b", "ideas", "C-1", meta, card["body"])
+        server._sync_back_relations("C-1", old_relations, card["relations"])
+
+        self.assertEqual(server.read_card("b", "ideas", "C-1")["relations"], ["C-2"])
+        self.assertEqual(server.read_card("b", "ideas", "C-2")["relations"], ["C-1"])
+
+
 class TestDataLayer(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -581,18 +693,40 @@ class TestAggregationAPI(unittest.TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['title'], 'Login Bug Fix')
 
-    def test_search_by_assignee(self):
+    def test_search_by_description(self):
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/ideas/cards', {
-                'title': 'Task A', 'assignee': 'Charlie'})
+                'title': 'Task A', 'description': 'investigate the cache layer'})
         make_request_port(8091, 'POST',
             '/api/boards/agg-board/lists/ideas/cards', {
-                'title': 'Task B', 'assignee': 'Dana'})
+                'title': 'Task B', 'description': 'rewrite the loader'})
         status, data = make_request_port(8091, 'GET',
-            '/api/search?q=charlie')
+            '/api/search?q=cache')
         self.assertEqual(status, 200)
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['title'], 'Task A')
+
+    def test_search_by_card_id(self):
+        status_create, created = make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/ideas/cards', {
+                'title': 'Some Task'})
+        self.assertEqual(status_create, 201)
+        cid = created['id'].lower()
+        status, data = make_request_port(8091, 'GET',
+            '/api/search?q=' + cid)
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(len(data), 1)
+        self.assertTrue(any(d['id'] == created['id'] for d in data))
+
+    def test_search_does_not_match_assignee(self):
+        # Per spec: search is title + description + id only.
+        make_request_port(8091, 'POST',
+            '/api/boards/agg-board/lists/ideas/cards', {
+                'title': 'Task A', 'assignee': 'Charlie'})
+        status, data = make_request_port(8091, 'GET',
+            '/api/search?q=charlie')
+        self.assertEqual(status, 200)
+        self.assertEqual(data, [])
 
     def test_search_no_results(self):
         make_request_port(8091, 'POST',
