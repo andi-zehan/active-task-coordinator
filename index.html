@@ -1668,7 +1668,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   </div>
   <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
   <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
-  <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
   <button class="header-btn top-btn" id="btn-settings" title="LLM settings">&#9881; Settings</button>
 </div>
 
@@ -4086,16 +4085,12 @@ function clearChat() {
   document.getElementById('chat-messages').innerHTML = '';
 }
 
-document.getElementById('btn-chat-toggle').addEventListener('click', toggleChat);
+// Chat is hidden in v0.1 — no toggle button, sidebar stays closed.
 document.getElementById('btn-chat-clear').addEventListener('click', () => {
   if (chatState.messages.length === 0 || confirm('Clear conversation?')) {
     clearChat();
   }
 });
-
-if (localStorage.getItem(CHAT_OPEN_KEY) === '1') {
-  setChatOpen(true);
-}
 
 /* ================================================================
    Chat Sidebar — streaming, render, send
