@@ -12,7 +12,7 @@ CONFIG_PATH = Path(__file__).parent / ".sync-config.json"
 ALLOWED_MODES = ("off", "local", "remote")
 
 DEFAULTS = {
-    "mode": "remote",
+    "mode": "off",
     "remote_url": "",
     "branch": "main",
     "skip_next_pull": False,
@@ -117,12 +117,14 @@ def sanitize_user_updates(updates: dict) -> dict:
 def migrate_defaults(data_dir: Path, fallback_remote_url: str = "") -> dict:
     """Derive first-run config from the current state of `data_dir`.
 
-    Called only when CONFIG_PATH does not yet exist.
+    Called only when CONFIG_PATH does not yet exist. Default is sync 'off' so
+    fresh installs never attempt git activity unless the data dir was already
+    a git repo (e.g. an existing dev install being migrated forward).
     """
     git_dir = data_dir / ".git"
     if not git_dir.exists():
         return {
-            "mode": "remote",
+            "mode": "off",
             "remote_url": fallback_remote_url,
             "branch": "main",
             "skip_next_pull": False,

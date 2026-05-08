@@ -55,7 +55,19 @@
       "Bash(grep -E \"^Ran|FAIL|ERROR|OK|^$\" --line-buffered)",
       "Bash(node *)",
       "Bash(python3 *)",
-      "PowerShell(python -m unittest tests.test_server 2>&1 | Select-Object -Last 15)"
+      "PowerShell(python -m unittest tests.test_server 2>&1 | Select-Object -Last 15)",
+      "Bash(rm -rf D:/temp/not-a-dir.txt)",
+      "Bash(echo content *)",
+      "Bash(rm D:/temp/realfile.txt)",
+      "Bash(rm -rf D:/temp/atc-test)",
+      "Bash(rm -rf \"D:/temp/flow-test\")",
+      "Bash(mkdir -p \"D:/temp/flow-test\")",
+      "Bash(.venv/Scripts/python.exe -c \"import server; print\\('imports OK, DATA_DIR=', server.DATA_DIR\\)\")",
+      "Bash(cp ~/.atc/config.json ~/.atc/config.json.dev-backup)",
+      "Bash(rm ~/.atc/config.json)",
+      "Bash(.venv/Scripts/python.exe -c \"import server; print\\('DATA_DIR=', server.DATA_DIR\\); import os; print\\('exists?', os.path.exists\\(server.DATA_DIR\\)\\)\")",
+      "Bash(mv ~/.atc/config.json.dev-backup ~/.atc/config.json)",
+      "Bash(.venv/Scripts/python.exe -c ' *)"
     ]
   }
 }

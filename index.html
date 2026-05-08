@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ATC</title>
+<title>Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@600;700&display=swap" rel="stylesheet">
 <style>
 /* ── Reset & Base ─────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -53,11 +56,85 @@ a { color: #0052cc; text-decoration: none; }
   z-index: 100;
 }
 .top-bar .app-name {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-weight: 700;
-  font-size: 18px;
-  color: #0052cc;
+  font-size: 22px;
   letter-spacing: -0.5px;
-  margin-right: 4px;
+  margin-right: 8px;
+  background: linear-gradient(90deg, #ff5e3a 0%, #e8417f 50%, #8e2de2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  user-select: none;
+}
+
+/* ── Flow splash screen (centered Office-style window) ──────── */
+#flow-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 30, 66, 0.4);
+  backdrop-filter: blur(2px);
+  opacity: 1;
+  transition: opacity 0.4s ease-out;
+}
+#flow-splash.fade-out { opacity: 0; pointer-events: none; }
+#flow-splash .splash-card {
+  width: 360px;
+  padding: 36px 32px 28px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(9, 30, 66, 0.32),
+              0 4px 12px rgba(9, 30, 66, 0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  user-select: none;
+}
+#flow-splash .wordmark {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 56px;
+  letter-spacing: -1.5px;
+  line-height: 1;
+  background: linear-gradient(90deg, #ff5e3a 0%, #e8417f 50%, #8e2de2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+#flow-splash .tagline {
+  margin-top: 10px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #6b778c;
+}
+#flow-splash .progress {
+  margin-top: 28px;
+  width: 100%;
+  height: 2px;
+  background: #ebecf0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+#flow-splash .progress::after {
+  content: '';
+  position: absolute;
+  inset: 0 100% 0 0;
+  background: linear-gradient(90deg, #ff5e3a 0%, #e8417f 50%, #8e2de2 100%);
+  border-radius: 999px;
+  animation: flow-progress 5s ease-out forwards;
+}
+@keyframes flow-progress {
+  0%   { right: 100%; }
+  100% { right: 0%; }
 }
 .top-bar select {
   padding: 4px 8px;
@@ -156,23 +233,6 @@ a { color: #0052cc; text-decoration: none; }
   transition: background 0.15s;
 }
 .btn-new-card:hover { background: #0065ff; }
-.btn-sync {
-  padding: 5px 12px;
-  background: #f4f5f7;
-  color: #5e6c84;
-  border: 1px solid #dfe1e6;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 13px;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-.btn-sync:hover { background: #ebecf0; color: #172b4d; }
-.btn-sync.syncing { opacity: 0.6; pointer-events: none; }
-.btn-sync.sync-ok { background: #e3fcef; color: #006644; border-color: #abf5d1; }
-.btn-sync.sync-err { background: #ffebe6; color: #bf2600; border-color: #ffbdad; }
-.btn-sync.sync-dirty { background: #e74c3c; color: #fff; border-color: #c0392b; }
-.btn-sync.sync-dirty:hover { background: #c0392b; }
 .top-btn { min-width: 130px; text-align: center; padding: 5px 10px; }
 .header-btn {
   padding: 5px 12px;
@@ -1582,9 +1642,18 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </head>
 <body>
 
+<!-- ── Splash screen (auto-dismisses after ~1.4s) ─────────────── -->
+<div id="flow-splash">
+  <div class="splash-card">
+    <div class="wordmark">Flow</div>
+    <div class="tagline">Notes &rarr; AI &rarr; Tasks</div>
+    <div class="progress"></div>
+  </div>
+</div>
+
 <!-- ── Top Bar ────────────────────────────────────────────────── -->
 <div class="top-bar">
-  <span class="app-name">ATC</span>
+  <span class="app-name">Flow</span>
   <select id="board-select" style="display:none"></select>
   <div class="view-switcher">
     <button data-view="board" class="active">Kanban</button>
@@ -1601,7 +1670,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
   <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
   <button class="header-btn top-btn" id="btn-settings" title="LLM settings">&#9881; Settings</button>
-  <button class="btn-sync top-btn" id="btn-sync" title="Sync data to GitHub">&#x21BB; Sync</button>
 </div>
 
 <!-- ── Filter Bar ─────────────────────────────────────────────── -->
@@ -1688,7 +1756,33 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   <div class="modal" style="max-width:480px;">
     <button class="modal-close" id="settings-close">&times;</button>
     <div class="modal-body">
-      <h2>LLM Settings</h2>
+      <h2 style="margin-top:0;">Data folder</h2>
+      <div style="margin-bottom:12px;">
+        <label class="field-label">Folder where your cards are stored</label>
+        <input id="cfg-data-dir" type="text"
+          placeholder="C:\Users\you\Documents\Flow"
+          style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
+        <div style="font-size:12px;color:#5e6c84;margin-top:4px;">
+          Tip: pick a folder inside OneDrive or Dropbox to back up your cards automatically.
+          Currently active: <span id="cfg-active-data-dir" style="font-family:monospace;"></span>
+        </div>
+        <div id="cfg-data-dir-restart" hidden
+          style="margin-top:8px;padding:8px 10px;background:#fff4e5;border:1px solid #ffb84d;border-radius:4px;font-size:13px;color:#7a4a00;">
+          ⚠️ Saved. Restart the app for the new folder to take effect.
+        </div>
+      </div>
+      <hr style="border:none;border-top:1px solid #dfe1e6;margin:16px 0;" />
+      <h2 style="margin-top:0;">LLM Settings</h2>
+      <div id="cfg-api-key-help"
+        style="margin-bottom:12px;padding:10px 12px;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;font-size:13px;color:#172b4d;line-height:1.5;">
+        <strong>Need an API token?</strong>
+        <ol style="margin:6px 0 0 18px;padding:0;">
+          <li>Open the internal token generator: <a href="https://api-dev.llm-incubator.automotive.cloud/dev/v0/token-generator" target="_blank" rel="noopener">api-dev.llm-incubator.automotive.cloud</a></li>
+          <li>Sign in with your corporate account</li>
+          <li>Generate a token</li>
+          <li>Paste the token below and click <em>Save</em>.</li>
+        </ol>
+      </div>
       <div style="margin-bottom:12px;">
         <label class="field-label">API token</label>
         <input id="cfg-token" type="password" placeholder="paste token" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
@@ -1714,51 +1808,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
       <div class="modal-actions" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
         <button id="btn-test-conn" class="header-btn">Test connection</button>
         <span id="cfg-status" style="font-size:13px;"></span>
-      </div>
-      <hr style="border:none;border-top:1px solid #dfe1e6;margin:16px 0;" />
-      <h2 style="margin-top:0;">Data sync</h2>
-
-      <div style="margin-bottom:12px;">
-        <label class="field-label">Mode</label>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
-            <input type="radio" name="sync-mode" value="off" /> Off (no git activity)
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
-            <input type="radio" name="sync-mode" value="local" /> Local (commit only)
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;">
-            <input type="radio" name="sync-mode" value="remote" /> Remote (commit + push)
-          </label>
-        </div>
-      </div>
-
-      <div id="sync-remote-fields" hidden>
-        <div style="margin-bottom:12px;">
-          <label class="field-label">Remote URL</label>
-          <input id="sync-remote-url" type="text"
-            placeholder="https://github.com/you/atc-content.git"
-            style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
-        </div>
-        <div style="margin-bottom:12px;">
-          <label class="field-label">Branch</label>
-          <input id="sync-branch" type="text"
-            style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" />
-        </div>
-        <div id="sync-privacy-warning"
-          style="margin-bottom:12px;padding:8px 10px;background:#fff4e5;border:1px solid #ffb84d;border-radius:4px;font-size:13px;color:#7a4a00;">
-          ⚠️ Your cards may contain personal or work-sensitive notes. Make sure the remote repository is <strong>private</strong>. ATC will not check this for you.
-        </div>
-      </div>
-
-      <div style="margin-bottom:12px;font-size:12px;color:#5e6c84;">
-        <span id="sync-git-status">Status: …</span>
-      </div>
-
-      <div class="modal-actions" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <button id="btn-sync-test" class="header-btn">Test sync</button>
-        <button id="btn-sync-pull" class="header-btn" hidden>Pull from remote</button>
-        <span id="sync-status-msg" style="font-size:13px;"></span>
       </div>
 
       <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;">
@@ -1815,7 +1864,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <h2>Result</h2>
         <div id="notes-result" style="font-size:13px;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
-          <button id="btn-notes-sync" class="header-btn" hidden>Sync now</button>
           <button id="btn-notes-close" class="btn-new-card">Close</button>
         </div>
       </div>
@@ -1833,6 +1881,20 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 
 <script>
+/* ================================================================
+   Splash — fade out shortly after load, then remove from DOM.
+   ================================================================ */
+const SPLASH_VISIBLE_MS = 5000;
+const SPLASH_FADE_MS = 500;
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const el = document.getElementById('flow-splash');
+    if (!el) return;
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), SPLASH_FADE_MS);
+  }, SPLASH_VISIBLE_MS);
+});
+
 /* ================================================================
    State
    ================================================================ */
@@ -3871,66 +3933,6 @@ document.getElementById('nc-title').addEventListener('keydown', (e) => {
 
 document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
 
-let currentSyncMode = 'remote'; // updated by checkSyncStatus
-
-document.getElementById('btn-sync').addEventListener('click', async () => {
-  if (currentSyncMode === 'off') return; // disabled
-  const btn = document.getElementById('btn-sync');
-  const verb = currentSyncMode === 'local' ? 'Committing' : 'Syncing';
-  const okLabel = currentSyncMode === 'local' ? '✓ Committed' : '✓ Synced';
-  btn.classList.add('syncing');
-  btn.textContent = '⟳ ' + verb + '...';
-  try {
-    const result = await api.post('/api/sync/push');
-    btn.classList.remove('syncing');
-    if (result.status === 'ok') {
-      btn.classList.add('sync-ok');
-      btn.textContent = okLabel;
-    } else if (result.status === 'no-changes') {
-      btn.classList.add('sync-ok');
-      btn.textContent = '✓ Up to date';
-    } else if (result.status === 'skipped') {
-      btn.classList.add('sync-ok');
-      btn.textContent = '○ ' + (result.message || 'skipped');
-    } else {
-      btn.classList.add('sync-err');
-      btn.textContent = '✗ ' + (result.message || 'failed');
-    }
-  } catch (err) {
-    btn.classList.remove('syncing');
-    btn.classList.add('sync-err');
-    btn.textContent = '✗ Sync failed';
-  }
-  setTimeout(() => {
-    btn.classList.remove('sync-ok', 'sync-err');
-    checkSyncStatus();
-  }, 3000);
-});
-
-async function checkSyncStatus() {
-  const btn = document.getElementById('btn-sync');
-  if (
-    btn.classList.contains('syncing') ||
-    btn.classList.contains('sync-ok') ||
-    btn.classList.contains('sync-err')
-  ) return;
-  try {
-    const result = await api.get('/api/sync/status');
-    currentSyncMode = result.mode || 'remote';
-    btn.disabled = (currentSyncMode === 'off');
-    btn.classList.toggle('sync-dirty', !!result.dirty);
-    if (currentSyncMode === 'off') {
-      btn.textContent = 'Sync off';
-    } else if (currentSyncMode === 'local') {
-      btn.textContent = result.dirty ? '↻ Commit needed' : '↻ Commit';
-    } else {
-      btn.textContent = result.dirty ? '↻ Sync needed' : '↻ Sync';
-    }
-  } catch { }
-}
-checkSyncStatus();
-setInterval(checkSyncStatus, 10000);
-
 /* ================================================================
    LLM Settings modal
    ================================================================ */
@@ -3941,19 +3943,20 @@ const cfgEls = {
   model: document.getElementById('cfg-model'),
   tls: document.getElementById('cfg-tls-verify'),
   status: document.getElementById('cfg-status'),
-  syncRemoteFields: document.getElementById('sync-remote-fields'),
-  syncRemoteUrl: document.getElementById('sync-remote-url'),
-  syncBranch: document.getElementById('sync-branch'),
-  syncGitStatus: document.getElementById('sync-git-status'),
-  syncStatusMsg: document.getElementById('sync-status-msg'),
-  syncPullBtn: document.getElementById('btn-sync-pull'),
+  dataDir: document.getElementById('cfg-data-dir'),
+  activeDataDir: document.getElementById('cfg-active-data-dir'),
+  dataDirRestart: document.getElementById('cfg-data-dir-restart'),
 };
 
 async function openSettings() {
-  const [cfg, sync] = await Promise.all([
+  const [cfg, app] = await Promise.all([
     api.get('/api/llm-config'),
-    api.get('/api/sync/config'),
+    api.get('/api/app-config'),
   ]);
+  // App / data folder
+  cfgEls.dataDir.value = app.data_dir || '';
+  cfgEls.activeDataDir.textContent = app.active_data_dir || '';
+  cfgEls.dataDirRestart.hidden = true;
   // LLM
   cfgEls.token.value = '';
   cfgEls.token.placeholder = cfg.auth_token || 'paste token';
@@ -3961,42 +3964,32 @@ async function openSettings() {
   cfgEls.model.value = cfg.model || 'claude-opus-4-7';
   cfgEls.tls.checked = !!cfg.tls_verify;
   cfgEls.status.textContent = '';
-  // Sync
-  document
-    .querySelector(`input[name="sync-mode"][value="${sync.mode}"]`)
-    .checked = true;
-  cfgEls.syncRemoteUrl.value = sync.remote_url || '';
-  cfgEls.syncBranch.value = sync.branch || 'main';
-  applySyncModeVisibility();
-  cfgEls.syncGitStatus.textContent = `Status: ${describeGitStatus(sync.git_status, sync.mode)}`;
-  cfgEls.syncStatusMsg.textContent = '';
   cfgEls.overlay.classList.add('visible');
 }
 
-function applySyncModeVisibility() {
-  const sel = document.querySelector('input[name="sync-mode"]:checked');
-  const mode = sel ? sel.value : 'off';
-  cfgEls.syncRemoteFields.hidden = (mode !== 'remote');
-  cfgEls.syncPullBtn.hidden = (mode !== 'remote');
-}
-
-function describeGitStatus(status, mode) {
-  if (mode === 'off') return 'sync disabled';
-  if (status === 'ok') return 'repository OK · remote configured';
-  if (status === 'no-repo') return 'not initialized — saving will run `git init`';
-  if (status === 'missing-remote') return 'repository OK · no remote configured';
-  return status || 'unknown';
-}
-
-document.querySelectorAll('input[name="sync-mode"]').forEach((el) => {
-  el.addEventListener('change', applySyncModeVisibility);
-});
-
 function closeSettings() {
   cfgEls.overlay.classList.remove('visible');
+  // Closing the modal counts as "user has seen the prompt" — don't auto-open
+  // again on next launch even if they skipped pasting a token.
+  api.put('/api/app-config', { seen_api_key_prompt: true }).catch(() => {});
 }
 
 document.getElementById('btn-settings').addEventListener('click', openSettings);
+
+// First-run nudge: open Settings automatically when no API key is set yet
+// AND the user has not been prompted before. Marked seen on save (or close).
+// Waits for the splash to clear so the modal doesn't pop under it.
+(async function maybeShowFirstRunPrompt() {
+  try {
+    const [llm, app] = await Promise.all([
+      api.get('/api/llm-config'),
+      api.get('/api/app-config'),
+    ]);
+    if (!llm.configured && !app.seen_api_key_prompt) {
+      setTimeout(openSettings, SPLASH_VISIBLE_MS + SPLASH_FADE_MS);
+    }
+  } catch { /* ignore — non-critical */ }
+})();
 document.getElementById('settings-close').addEventListener('click', closeSettings);
 document.getElementById('btn-cfg-cancel').addEventListener('click', closeSettings);
 cfgEls.overlay.addEventListener('click', (e) => {
@@ -4011,46 +4004,26 @@ document.getElementById('btn-cfg-save').addEventListener('click', async () => {
     tls_verify: cfgEls.tls.checked,
   };
   if (cfgEls.token.value) llmBody.auth_token = cfgEls.token.value;
-  // Sync
-  const modeEl = document.querySelector('input[name="sync-mode"]:checked');
-  const syncBody = {
-    mode: modeEl ? modeEl.value : 'off',
-    remote_url: cfgEls.syncRemoteUrl.value.trim(),
-    branch: cfgEls.syncBranch.value.trim() || 'main',
-  };
+  // App / data folder
+  const dataDirInput = cfgEls.dataDir.value.trim();
   try {
     await api.put('/api/llm-config', llmBody);
-    const syncResp = await api.put('/api/sync/config', syncBody);
-    if (syncResp.reconcile && syncResp.reconcile.status === 'error') {
-      cfgEls.status.textContent = 'Saved (sync warning: ' + syncResp.reconcile.message + ')';
+    let appResp = null;
+    if (dataDirInput) {
+      appResp = await api.put('/api/app-config', { data_dir: dataDirInput });
+    }
+    // Mark the API-key prompt as seen so first-run auto-open does not nag again.
+    await api.put('/api/app-config', { seen_api_key_prompt: true });
+    if (appResp && appResp.requires_restart) {
+      cfgEls.dataDirRestart.hidden = false;
+      cfgEls.status.textContent = 'Saved.';
+      // Don't close — the restart banner needs to stay visible.
     } else {
       closeSettings();
       refreshNotesButtonState();
-      checkSyncStatus();
     }
   } catch (err) {
     cfgEls.status.textContent = 'Save failed: ' + err.message;
-  }
-});
-
-document.getElementById('btn-sync-test').addEventListener('click', async () => {
-  cfgEls.syncStatusMsg.textContent = 'Testing…';
-  try {
-    const r = await api.post('/api/sync/test');
-    cfgEls.syncStatusMsg.textContent = (r.ok ? '✓ ' : '✗ ') + (r.message || '');
-  } catch (err) {
-    cfgEls.syncStatusMsg.textContent = '✗ ' + err.message;
-  }
-});
-
-document.getElementById('btn-sync-pull').addEventListener('click', async () => {
-  cfgEls.syncStatusMsg.textContent = 'Pulling…';
-  try {
-    const r = await api.post('/api/sync/pull');
-    cfgEls.syncStatusMsg.textContent =
-      (r.status === 'ok' ? '✓ ' : '✗ ') + (r.message || r.status);
-  } catch (err) {
-    cfgEls.syncStatusMsg.textContent = '✗ ' + err.message;
   }
 });
 
@@ -4827,28 +4800,8 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
       <ul>${skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('')}</ul>` : ''}
     <p>Note kept at <a href="/api/notes/${encodeURIComponent(currentNoteId)}" target="_blank">/api/notes/${escHtml(currentNoteId)}</a></p>
   `;
-  document.getElementById('btn-notes-sync').hidden =
-    applied.length === 0 || currentSyncMode === 'off';
-  document.getElementById('btn-notes-sync').disabled = false;
-  document.getElementById('btn-notes-sync').textContent = 'Sync now';
   showNotesStep(3);
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
-});
-
-document.getElementById('btn-notes-sync').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-notes-sync');
-  if (currentSyncMode === 'off') return;
-  const verb = currentSyncMode === 'local' ? 'Committing' : 'Syncing';
-  const okLabel = currentSyncMode === 'local' ? 'Committed ✓' : 'Synced ✓';
-  btn.disabled = true;
-  btn.textContent = verb + '…';
-  try {
-    await api.post('/api/sync/push');
-    btn.textContent = okLabel;
-  } catch (err) {
-    btn.textContent = '✗ ' + err.message;
-    btn.disabled = false;
-  }
 });
 
 // Modal close

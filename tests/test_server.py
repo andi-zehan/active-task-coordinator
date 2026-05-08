@@ -738,6 +738,70 @@ class TestAggregationAPI(unittest.TestCase):
         self.assertEqual(data, [])
 
 
+class TestAppConfigEndpoints(unittest.TestCase):
+    def setUp(self):
+        import app_config
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp.name)
+        self.orig_cfg_dir = app_config.CONFIG_DIR
+        self.orig_cfg_path = app_config.CONFIG_PATH
+        app_config.CONFIG_DIR = self.tmp_path / ".atc"
+        app_config.CONFIG_PATH = app_config.CONFIG_DIR / "config.json"
+        self.server = HTTPServer(('127.0.0.1', 0), server.RequestHandler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def tearDown(self):
+        import app_config
+        self.server.shutdown()
+        self.thread.join()
+        app_config.CONFIG_DIR = self.orig_cfg_dir
+        app_config.CONFIG_PATH = self.orig_cfg_path
+        self.tmp.cleanup()
+
+    def test_get_returns_defaults(self):
+        status, body = make_request_port(self.port, "GET", "/api/app-config")
+        self.assertEqual(status, 200)
+        self.assertIn("data_dir", body)
+        self.assertIn("seen_api_key_prompt", body)
+        self.assertIn("active_data_dir", body)
+
+    def test_put_changes_data_dir(self):
+        target = str(self.tmp_path / "new-cards")
+        status, body = make_request_port(self.port, "PUT", "/api/app-config",
+                                          {"data_dir": target})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["data_dir"], target)
+        self.assertTrue(body["requires_restart"])
+
+    def test_put_seen_flag_does_not_require_restart(self):
+        status, body = make_request_port(self.port, "PUT", "/api/app-config",
+                                          {"seen_api_key_prompt": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["seen_api_key_prompt"])
+        self.assertFalse(body["requires_restart"])
+
+    def test_put_rejects_unwritable_path(self):
+        # A file (not a directory) is rejected by the validator.
+        f = self.tmp_path / "blocker.txt"
+        f.write_text("x", encoding="utf-8")
+        status, body = make_request_port(self.port, "PUT", "/api/app-config",
+                                          {"data_dir": str(f)})
+        self.assertEqual(status, 400)
+        self.assertIn("error", body)
+
+    def test_put_rejects_non_object_body(self):
+        status, _ = make_request_port(self.port, "PUT", "/api/app-config", [1, 2])
+        self.assertEqual(status, 400)
+
+    def test_put_drops_unknown_keys(self):
+        status, body = make_request_port(self.port, "PUT", "/api/app-config",
+                                          {"rogue": "value"})
+        self.assertEqual(status, 200)
+        self.assertNotIn("rogue", body)
+
+
 class TestLLMConfigEndpoints(unittest.TestCase):
     def setUp(self):
         import llm_config

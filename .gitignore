@@ -5,3 +5,6 @@ __pycache__/
 .llm-config.json
 .sync-config.json
 notes/
+.venv/
+dist/
+_inspect/

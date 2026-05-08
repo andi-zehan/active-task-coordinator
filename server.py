@@ -17,8 +17,30 @@ import notes
 import janitor
 import sync_config
 import data_repo
+import app_config
 
-DATA_DIR = Path(__file__).parent / "data"
+
+def _resolve_data_dir() -> Path:
+    """Pick the data dir for this process, honoring legacy installs.
+
+    Priority:
+      1. ~/.atc/config.json `data_dir` if explicitly set.
+      2. Project-relative ./data if it has a boards/ subdir (legacy dev install).
+      3. ~/ATC-Data (default for fresh installs).
+
+    On case 2 we persist the choice so subsequent starts skip the lookup
+    and the user can later relocate via Settings.
+    """
+    if app_config.CONFIG_PATH.exists():
+        return app_config.get_data_dir()
+    legacy = Path(__file__).parent / "data"
+    if (legacy / "boards").exists():
+        app_config.save({"data_dir": str(legacy)})
+        return legacy
+    return app_config.get_data_dir()
+
+
+DATA_DIR = _resolve_data_dir()
 LISTS = ["ideas", "backlog", "in-progress", "done"]
 
 
@@ -562,6 +584,12 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/llm-config/test' and method == 'POST':
             return self._handle_test_llm_config()
 
+        # /api/app-config
+        if path == '/api/app-config' and method == 'GET':
+            return self._handle_get_app_config()
+        if path == '/api/app-config' and method == 'PUT':
+            return self._handle_put_app_config()
+
         # /api/notes/analyze
         if path == '/api/notes/analyze' and method == 'POST':
             return self._handle_notes_analyze()
@@ -980,6 +1008,34 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _handle_test_sync(self):
         self._send_json(data_repo.git_test())
 
+    def _handle_get_app_config(self):
+        view = app_config.public_view()
+        view["active_data_dir"] = str(DATA_DIR)
+        self._send_json(view)
+
+    def _handle_put_app_config(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        if not isinstance(body, dict):
+            return self._send_error(400, 'expected object')
+        updates = app_config.sanitize_user_updates(body)
+        try:
+            app_config.validate(updates)
+        except app_config.ValidationError as e:
+            return self._send_error(400, str(e))
+        app_config.save(updates)
+        # Restart is only needed when data_dir actually changes from the value
+        # this process loaded at startup. seen_api_key_prompt is frontend-only.
+        requires_restart = False
+        if "data_dir" in updates:
+            requires_restart = Path(updates["data_dir"]).expanduser() != DATA_DIR
+        response = app_config.public_view()
+        response["active_data_dir"] = str(DATA_DIR)
+        response["requires_restart"] = requires_restart
+        self._send_json(response)
+
     def _handle_get_llm_config(self):
         self._send_json(llm_config.public_view())
 
@@ -1195,21 +1251,22 @@ if __name__ == '__main__':
 
     cfg = sync_config.load()
 
-    # Reconcile data/ to match the config (idempotent, no network).
-    rec = data_repo.reconcile_repo_state(cfg)
-    print(f"sync: reconcile {rec['status']} — {rec['message']}", flush=True)
+    if cfg["mode"] != "off":
+        # Reconcile data/ to match the config (idempotent, no network).
+        rec = data_repo.reconcile_repo_state(cfg)
+        print(f"sync: reconcile {rec['status']} — {rec['message']}", flush=True)
 
-    # Auto-pull, unless suppressed by a recent config change.
-    if cfg["mode"] == "remote" and not cfg["skip_next_pull"]:
-        result = data_repo.git_sync_pull()
-        print(f"sync: pull {result['status']} — {result['message']}", flush=True)
-    elif cfg["skip_next_pull"]:
-        print(
-            "sync: auto-pull skipped after mode change — push your local commits "
-            "first, then pull manually if desired",
-            flush=True,
-        )
-        sync_config.set_skip_next_pull(False)
+        # Auto-pull, unless suppressed by a recent config change.
+        if cfg["mode"] == "remote" and not cfg["skip_next_pull"]:
+            result = data_repo.git_sync_pull()
+            print(f"sync: pull {result['status']} — {result['message']}", flush=True)
+        elif cfg["skip_next_pull"]:
+            print(
+                "sync: auto-pull skipped after mode change — push your local commits "
+                "first, then pull manually if desired",
+                flush=True,
+            )
+            sync_config.set_skip_next_pull(False)
 
     ensure_data_dir()
     # Run janitor once on startup, then every 24 hours in a background thread

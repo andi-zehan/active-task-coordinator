@@ -22,7 +22,7 @@ class TestLoadSave(unittest.TestCase):
 
     def test_load_returns_defaults_when_no_file(self):
         cfg = sync_config.load()
-        self.assertEqual(cfg["mode"], "remote")
+        self.assertEqual(cfg["mode"], "off")
         self.assertEqual(cfg["remote_url"], "")
         self.assertEqual(cfg["branch"], "main")
         self.assertEqual(cfg["skip_next_pull"], False)
@@ -160,9 +160,10 @@ class TestMigration(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_no_data_dir_falls_back_to_remote_default(self):
+    def test_no_data_dir_yields_off_mode(self):
+        # Default is "off" so fresh installs do nothing with git on startup.
         cfg = sync_config.migrate_defaults(self.data_dir, fallback_remote_url="https://fallback/x.git")
-        self.assertEqual(cfg["mode"], "remote")
+        self.assertEqual(cfg["mode"], "off")
         self.assertEqual(cfg["remote_url"], "https://fallback/x.git")
         self.assertEqual(cfg["branch"], "main")
 
