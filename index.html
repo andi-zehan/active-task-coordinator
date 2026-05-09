@@ -251,6 +251,24 @@ a { color: #0052cc; text-decoration: none; }
 .header-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .header-btn[disabled]:hover { background: #f4f5f7; color: #5e6c84; }
 .modal.modal-wide { width: min(var(--modal-w), 92vw); max-width: 92vw; }
+.md-body h1, .md-body h2, .md-body h3, .md-body h4 { margin: 14px 0 6px 0; line-height: 1.25; color: #172b4d; }
+.md-body h1 { font-size: 20px; }
+.md-body h2 { font-size: 17px; }
+.md-body h3 { font-size: 15px; }
+.md-body h4 { font-size: 14px; }
+.md-body > *:first-child { margin-top: 0; }
+.md-body p { margin: 6px 0; }
+.md-body ul, .md-body ol { margin: 6px 0; padding-left: 22px; }
+.md-body li { margin: 2px 0; }
+.md-body code { background: #f4f5f7; padding: 1px 5px; border-radius: 3px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.92em; }
+.md-body pre { background: #f4f5f7; padding: 10px 12px; border-radius: 4px; overflow-x: auto; }
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid #dfe1e6; color: #5e6c84; }
+.md-body hr { border: none; border-top: 1px solid #dfe1e6; margin: 12px 0; }
+.md-body table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.md-body th, .md-body td { border: 1px solid #dfe1e6; padding: 6px 10px; text-align: left; vertical-align: top; }
+.md-body th { background: #f4f5f7; font-weight: 600; }
+.md-body tr:nth-child(even) td { background: #fafbfc; }
 .op-row { border-top: 1px solid #e0e0e0; padding: 6px 0; }
 .op-row:first-child { border-top: none; }
 .op-row label { display: block; cursor: pointer; font-size: 13px; }
@@ -1902,7 +1920,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
       <!-- Step 2 -->
       <div id="briefing-step-2" hidden>
         <h2>Briefing</h2>
-        <div id="briefing-text" style="font-size:14px;line-height:1.55;white-space:pre-wrap;background:#fff;border:1px solid #dfe1e6;border-radius:4px;padding:12px 14px;max-height:380px;overflow-y:auto;"></div>
+        <div id="briefing-text" class="md-body" style="font-size:14px;line-height:1.55;background:#fff;border:1px solid #dfe1e6;border-radius:4px;padding:12px 14px;max-height:65vh;overflow-y:auto;"></div>
         <p id="briefing-summary" style="font-size:12px;color:#5e6c84;margin-top:8px;"></p>
         <h3 style="font-size:14px;margin-top:14px;">Proposed actions</h3>
         <div id="briefing-ops"></div>
@@ -2151,6 +2169,182 @@ function linkifyHtml(str) {
   }
   if (i < str.length) out.push(escHtml(str.slice(i)));
   return out.join('');
+}
+
+// Inline markdown: code spans, wiki chips, md links, bare URLs, bold, italic.
+// Used as the inline formatter for mdToHtml below.
+function mdInline(str) {
+  if (!str) return '';
+  const out = [];
+  let i = 0;
+  const re = /`([^`\n]+)`|\[\[(C-\d+)\]\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(\bhttps?:\/\/[^\s<>"']+|\bwww\.[^\s<>"']+)|\*\*([^*\n]+)\*\*|(?<![A-Za-z0-9_])\*([^*\n]+)\*(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])_([^_\n]+)_(?![A-Za-z0-9_])/g;
+  let m;
+  while ((m = re.exec(str)) !== null) {
+    if (m.index > i) out.push(escHtml(str.slice(i, m.index)));
+    if (m[1] !== undefined) {
+      out.push(`<code>${escHtml(m[1])}</code>`);
+    } else if (m[2] !== undefined) {
+      const id = m[2];
+      const entry = state.idIndex.get(id);
+      if (entry) out.push(`<a href="#" class="card-link" data-id="${escHtml(id)}">${escHtml(id)}: ${escHtml(entry.title)}</a>`);
+      else out.push(`<span class="card-link missing" title="Unknown card">[[${escHtml(id)} ?]]</span>`);
+    } else if (m[3] !== undefined) {
+      out.push(`<a href="${escHtml(m[4])}" target="_blank" rel="noopener noreferrer">${escHtml(m[3])}</a>`);
+    } else if (m[5] !== undefined) {
+      let url = m[5], trail = '';
+      while (url.length && '.,;:!?)'.includes(url[url.length - 1])) {
+        trail = url[url.length - 1] + trail;
+        url = url.slice(0, -1);
+      }
+      const href = url.startsWith('www.') ? 'https://' + url : url;
+      out.push(`<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">${escHtml(url)}</a>`);
+      if (trail) out.push(escHtml(trail));
+    } else if (m[6] !== undefined) {
+      out.push(`<strong>${mdInline(m[6])}</strong>`);
+    } else if (m[7] !== undefined) {
+      out.push(`<em>${mdInline(m[7])}</em>`);
+    } else if (m[8] !== undefined) {
+      out.push(`<em>${mdInline(m[8])}</em>`);
+    }
+    i = m.index + m[0].length;
+  }
+  if (i < str.length) out.push(escHtml(str.slice(i)));
+  return out.join('');
+}
+
+// Block-level markdown → HTML. Handles headings, lists (nested), tables,
+// blockquotes, fenced code, hr, paragraphs. Inline pass goes through mdInline
+// so [[C-N]] chips and bare URLs keep working everywhere.
+function mdToHtml(src) {
+  if (!src) return '';
+  // Normalize line endings.
+  const lines = src.replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+
+  const splitTableRow = (line) => {
+    let s = line.trim();
+    if (s.startsWith('|')) s = s.slice(1);
+    if (s.endsWith('|')) s = s.slice(0, -1);
+    return s.split('|').map(c => c.trim());
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+
+    // Fenced code block.
+    if (/^```/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      out.push(`<pre><code>${escHtml(buf.join('\n'))}</code></pre>`);
+      continue;
+    }
+
+    // ATX heading.
+    const h = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (h) {
+      out.push(`<h${h[1].length}>${mdInline(h[2])}</h${h[1].length}>`);
+      i++;
+      continue;
+    }
+
+    // Horizontal rule.
+    if (/^\s{0,3}([-*_])(\s*\1){2,}\s*$/.test(line)) {
+      out.push('<hr>');
+      i++;
+      continue;
+    }
+
+    // Table: header row + separator (|---|---|).
+    if (/^\s{0,3}\|.*\|\s*$/.test(line) &&
+        i + 1 < lines.length &&
+        /^\s{0,3}\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+      const header = splitTableRow(line);
+      const aligns = splitTableRow(lines[i + 1]).map(c => {
+        const left = c.startsWith(':');
+        const right = c.endsWith(':');
+        if (left && right) return 'center';
+        if (right) return 'right';
+        if (left) return 'left';
+        return '';
+      });
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s{0,3}\|.*\|\s*$/.test(lines[i])) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+      const th = header.map((c, idx) =>
+        `<th${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ''}>${mdInline(c)}</th>`
+      ).join('');
+      const trs = rows.map(r =>
+        '<tr>' + r.map((c, idx) =>
+          `<td${aligns[idx] ? ` style="text-align:${aligns[idx]}"` : ''}>${mdInline(c)}</td>`
+        ).join('') + '</tr>'
+      ).join('');
+      out.push(`<table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`);
+      continue;
+    }
+
+    // Blockquote.
+    if (/^\s{0,3}>\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s{0,3}>\s?/.test(lines[i])) {
+        buf.push(lines[i].replace(/^\s{0,3}>\s?/, ''));
+        i++;
+      }
+      out.push(`<blockquote>${mdToHtml(buf.join('\n'))}</blockquote>`);
+      continue;
+    }
+
+    // Lists (bullet or ordered). Group same-marker block; each item may span
+    // continuation lines indented by ≥2 spaces.
+    const ulMatch = line.match(/^(\s*)([-*+])\s+(.*)$/);
+    const olMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+    if (ulMatch || olMatch) {
+      const ordered = !!olMatch;
+      const tag = ordered ? 'ol' : 'ul';
+      const items = [];
+      while (i < lines.length) {
+        const l = lines[i];
+        const lm = ordered ? l.match(/^(\s*)(\d+)\.\s+(.*)$/) : l.match(/^(\s*)([-*+])\s+(.*)$/);
+        if (!lm) break;
+        const itemBuf = [lm[3]];
+        i++;
+        while (i < lines.length && lines[i].trim() && !/^(\s*)([-*+]|\d+\.)\s+/.test(lines[i])) {
+          itemBuf.push(lines[i].replace(/^\s{0,4}/, ''));
+          i++;
+        }
+        // Blank line between items still part of same list — peek.
+        if (i < lines.length && !lines[i].trim()) {
+          const next = lines[i + 1] || '';
+          if ((ordered && /^(\s*)\d+\.\s+/.test(next)) || (!ordered && /^(\s*)[-*+]\s+/.test(next))) {
+            i++; // consume the blank
+          }
+        }
+        // Item body: if it has block-y content (lists, etc), recurse; else inline.
+        const itemSrc = itemBuf.join('\n');
+        const hasNested = /\n\s*([-*+]|\d+\.)\s+/.test('\n' + itemSrc);
+        items.push(hasNested ? `<li>${mdToHtml(itemSrc)}</li>` : `<li>${mdInline(itemSrc.replace(/\n/g, ' '))}</li>`);
+      }
+      out.push(`<${tag}>${items.join('')}</${tag}>`);
+      continue;
+    }
+
+    // Paragraph: gather until blank or block-starting line.
+    const para = [];
+    while (i < lines.length && lines[i].trim()
+           && !/^(#{1,6}\s|```|>\s?|\s*[-*+]\s+|\s*\d+\.\s+|\s{0,3}\|)/.test(lines[i])) {
+      para.push(lines[i]);
+      i++;
+    }
+    out.push(`<p>${mdInline(para.join(' '))}</p>`);
+  }
+
+  return out.join('\n');
 }
 
 function isOverdue(dateStr) {
@@ -4774,6 +4968,7 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
     document.getElementById('notes-summary').textContent =
       `Note: ${currentNoteId} — ${result.summary || ''}`;
     renderOps(currentOps);
+    resetNotesApplyButton();
     showNotesStep(2);
   } catch (err) {
     appendNotesEvent(`❌ ${err.message}`);
@@ -4787,6 +4982,17 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
 function renderOps(ops) {
   // Same renderer the chat sidebar uses, so changes apply in both places.
   renderOpsRows(ops, document.getElementById('notes-ops'));
+}
+
+function resetNotesApplyButton() {
+  // Same bug as resetBriefingApplyButton — Apply mutates the button to a
+  // spinner and the success path navigates away without restoring it.
+  const btn = document.getElementById('btn-notes-apply');
+  btn.disabled = false;
+  btn.textContent = 'Apply';
+  btn.style.display = '';
+  btn.style.alignItems = '';
+  btn.style.gap = '';
 }
 
 document.getElementById('btn-notes-back').addEventListener('click', () => showNotesStep(1));
@@ -4975,7 +5181,7 @@ async function streamBriefing(prompt, onEvent) {
     body: JSON.stringify({ prompt }),
   });
   if (!r.ok) throw new Error(`POST /api/briefing/generate: ${r.status}`);
-  return await consumeBriefingSse(r);
+  return await consumeBriefingSse(r, onEvent);
 }
 
 async function streamBriefingRefine(briefingId, currentOps, currentText, feedback, onEvent) {
@@ -5023,8 +5229,20 @@ async function consumeBriefingSse(response, onEvent) {
 }
 
 function renderBriefingText(text) {
-  // Render the briefing markdown-ish text with [[C-N]] chips clickable.
-  document.getElementById('briefing-text').innerHTML = linkifyHtml(text || '');
+  // Render the briefing markdown with [[C-N]] chips clickable.
+  document.getElementById('briefing-text').innerHTML = mdToHtml(text || '');
+}
+
+function resetBriefingApplyButton() {
+  // Apply mutates the button's innerHTML/styles to show a spinner. The success
+  // path navigates straight to step 3 and never restores it, so a fresh visit
+  // to step 2 (after a Back+regenerate) would see "Applying…" frozen on.
+  const btn = document.getElementById('btn-briefing-apply');
+  btn.disabled = false;
+  btn.textContent = 'Apply';
+  btn.style.display = '';
+  btn.style.alignItems = '';
+  btn.style.gap = '';
 }
 
 function renderBriefingOps(ops) {
@@ -5103,6 +5321,7 @@ document.getElementById('btn-briefing-generate').addEventListener('click', async
       `${briefingState.id} — ${result.summary || ''}`;
     renderBriefingText(briefingState.text);
     renderBriefingOps(briefingState.ops);
+    resetBriefingApplyButton();
     showBriefingStep(2);
   } catch (err) {
     appendBriefingEvent('briefing-events', `❌ ${err.message}`);
