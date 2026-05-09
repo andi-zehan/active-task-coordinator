@@ -408,22 +408,35 @@ def _record_in_note(note_id: str, op: dict, target: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def apply_operations(operations: list[dict], note_id: str) -> dict:
+def _apply_op(op: dict, note_id: str | None) -> dict:
+    """Run a single op via _HANDLERS. Returns {"target": str} on success.
+
+    `note_id` is forwarded to the per-op handler (used only by create_card /
+    add_comment to attach a "Source note" link). Pass None when there is no
+    note context (e.g. the briefing flow). Recording into the note is the
+    caller's job — see `apply_operations`.
+    """
+    handler = _HANDLERS.get(op.get("op"))
+    if handler is None:
+        raise ValueError(f"unknown op '{op.get('op')}'")
+    return handler(op, note_id)
+
+
+def apply_operations(operations: list[dict], note_id: str | None) -> dict:
     """Run each operation. Skip ones whose target is gone. Always continue.
 
     A move_card updates the in-memory id-index so subsequent ops in the same
     batch automatically resolve to the new (board, list).
+
+    `note_id` is the note to attribute and record-into; pass None when running
+    ops outside a note context (e.g. the briefing flow).
     """
     applied = []
     skipped = []
 
     for op in operations:
-        handler = _HANDLERS.get(op.get("op"))
-        if handler is None:
-            skipped.append({"op": op, "reason": f"unknown op '{op.get('op')}'"})
-            continue
         try:
-            outcome = handler(op, note_id)
+            outcome = _apply_op(op, note_id)
             applied.append({"op": op["op"], "target": outcome["target"]})
             if note_id:
                 _record_in_note(note_id, op, outcome["target"])

@@ -86,11 +86,56 @@ class TestAppConfig(unittest.TestCase):
         )
         self.assertEqual(result, {"data_dir": "/tmp"})
 
-    def test_public_view_excludes_nothing_today(self):
-        # All fields are user-facing; this test pins the contract so a future
-        # internal-only field doesn't accidentally leak through public_view.
+    def test_public_view_keys(self):
+        # Pins the public_view contract so internal-only fields can't leak
+        # through silently. briefing_prompt_default is sourced from
+        # briefing.DEFAULT_PROMPT and is read-only (no PUT path).
         view = app_config.public_view()
-        self.assertEqual(set(view.keys()), {"data_dir", "seen_api_key_prompt"})
+        self.assertEqual(
+            set(view.keys()),
+            {"data_dir", "seen_api_key_prompt",
+             "briefing_prompt", "briefing_prompt_default"},
+        )
+
+    def test_briefing_prompt_default_empty_when_unset(self):
+        view = app_config.public_view()
+        self.assertEqual(view["briefing_prompt"], "")
+
+    def test_briefing_prompt_default_is_factory_constant(self):
+        # The read-only default exposed by public_view() must come straight
+        # from briefing.DEFAULT_PROMPT — that's the single source of truth
+        # for the Reset button on the frontend.
+        import briefing
+        view = app_config.public_view()
+        self.assertEqual(view["briefing_prompt_default"], briefing.DEFAULT_PROMPT)
+        self.assertTrue(view["briefing_prompt_default"].strip())
+
+    def test_briefing_prompt_roundtrip(self):
+        custom = "Focus on customer-facing cards only. [[C-X]] for chips."
+        app_config.save({"briefing_prompt": custom})
+        cfg = app_config.load()
+        self.assertEqual(cfg["briefing_prompt"], custom)
+        self.assertEqual(app_config.public_view()["briefing_prompt"], custom)
+
+    def test_briefing_prompt_can_be_cleared(self):
+        # Empty string == "no override; use factory default" — must be
+        # preserved as-is, not coerced to None or dropped.
+        app_config.save({"briefing_prompt": "something"})
+        app_config.save({"briefing_prompt": ""})
+        self.assertEqual(app_config.load()["briefing_prompt"], "")
+
+    def test_briefing_prompt_in_user_writable_keys(self):
+        self.assertIn("briefing_prompt", app_config.USER_WRITABLE_KEYS)
+        result = app_config.sanitize_user_updates({"briefing_prompt": "x"})
+        self.assertEqual(result, {"briefing_prompt": "x"})
+
+    def test_validate_rejects_non_string_briefing_prompt(self):
+        with self.assertRaises(app_config.ValidationError):
+            app_config.validate({"briefing_prompt": 42})
+
+    def test_validate_accepts_empty_briefing_prompt(self):
+        # Empty == use factory default. Must validate.
+        app_config.validate({"briefing_prompt": ""})
 
 
 class TestResolveDataDirOnImport(unittest.TestCase):

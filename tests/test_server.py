@@ -63,6 +63,20 @@ def stream_analyze(port, body):
     return resp.status, events, final
 
 
+def stream_briefing(port, body, *, path="/api/briefing/generate"):
+    """POST a briefing endpoint and return (status, [events], final_done_or_None)."""
+    url = f"http://localhost:{port}{path}"
+    req = urllib.request.Request(url, data=json.dumps(body).encode('utf-8'), method='POST')
+    req.add_header('Content-Type', 'application/json')
+    try:
+        resp = urllib.request.urlopen(req)
+        events = parse_sse_events(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return e.code, [], None
+    final = next((e for e in reversed(events) if e.get('type') == 'done'), None)
+    return resp.status, events, final
+
+
 class TestSlugify(unittest.TestCase):
     def test_simple(self):
         self.assertEqual(server.slugify("Hello World"), "hello-world")
@@ -961,6 +975,118 @@ class TestNotesEndpoints(unittest.TestCase):
         _, card = make_request_port(self.port, "GET",
             f"/api/cards/alpha/backlog/{card_id}")
         self.assertEqual(card.get("attachments") or [], [])
+
+
+class TestBriefingEndpoints(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.tmp.name) / "data"
+        self.data_dir.mkdir()
+        server.DATA_DIR = self.data_dir
+        # Bootstrap a minimal alpha board so create_card can succeed.
+        board_dir = self.data_dir / "boards" / "alpha"
+        board_dir.mkdir(parents=True)
+        (board_dir / "_board.md").write_text(
+            "---\nname: Alpha\ncolor: '#000'\n---\n", encoding="utf-8")
+        for lst in ("ideas", "backlog", "in-progress", "done"):
+            (board_dir / lst).mkdir()
+            (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
+        (self.data_dir / "_boards-order.json").write_text('["alpha"]', encoding="utf-8")
+        server.reset_id_index()
+
+        from tests._llm_fakes import FakeClient, FakeResponse, text_block, tool_use
+        # Two-turn script: text + tool_use(create_card) → text + finish.
+        scripted = [
+            FakeResponse([
+                text_block("## Today's Top 5\n\n1. Card alpha"),
+                tool_use("create_card", {
+                    "board": "alpha", "list": "backlog", "title": "Follow up",
+                    "confidence": "med", "reason": "from briefing",
+                }, id_="b1"),
+            ]),
+            FakeResponse([
+                text_block("\n2. Wrap-up"),
+                tool_use("finish", {"summary": "five priorities."}, id_="b2"),
+            ]),
+        ]
+        import llm_config
+        self._orig_get_client = llm_config.get_client
+        llm_config.get_client = lambda: FakeClient(list(scripted))
+
+        self.server = HTTPServer(('127.0.0.1', 0), server.RequestHandler)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join()
+        import llm_config
+        llm_config.get_client = self._orig_get_client
+        self.tmp.cleanup()
+
+    def test_generate_returns_text_and_operations(self):
+        status, events, done = stream_briefing(self.port, {"prompt": "Brief me."})
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(done)
+        self.assertTrue(done["briefing_id"].startswith("briefing-"))
+        self.assertEqual(done["summary"], "five priorities.")
+        self.assertIn("Top 5", done["text"])
+        self.assertIn("Wrap-up", done["text"])
+        self.assertEqual(len(done["operations"]), 1)
+        types = [e["type"] for e in events]
+        self.assertEqual(types[0], "started")
+        self.assertIn("turn", types)
+        self.assertIn("text", types)
+        self.assertIn("queued", types)
+
+    def test_generate_streams_sse_content_type(self):
+        url = f"http://localhost:{self.port}/api/briefing/generate"
+        req = urllib.request.Request(
+            url, data=json.dumps({"prompt": "x"}).encode('utf-8'), method='POST')
+        req.add_header('Content-Type', 'application/json')
+        with urllib.request.urlopen(req) as r:
+            self.assertIn("text/event-stream", r.headers.get("Content-Type", ""))
+            r.read()
+
+    def test_generate_rejects_empty_prompt(self):
+        status, _ = make_request_port(
+            self.port, "POST", "/api/briefing/generate", {"prompt": "  "})
+        self.assertEqual(status, 400)
+
+    def test_refine_rejects_missing_briefing_id(self):
+        status, _ = make_request_port(
+            self.port, "POST", "/api/briefing/refine",
+            {"feedback": "shorter", "current_ops": [], "current_text": ""})
+        self.assertEqual(status, 400)
+
+    def test_refine_rejects_missing_feedback(self):
+        status, _ = make_request_port(
+            self.port, "POST", "/api/briefing/refine",
+            {"briefing_id": "briefing-x", "current_ops": [], "current_text": ""})
+        self.assertEqual(status, 400)
+
+    def test_apply_creates_card_without_note(self):
+        # First generate, then apply the queued op.
+        _, _, done = stream_briefing(self.port, {"prompt": "do it"})
+        self.assertIsNotNone(done)
+        ops = done["operations"]
+        status, result = make_request_port(
+            self.port, "POST", "/api/briefing/apply", {"operations": ops})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["applied"]), 1)
+        target = result["applied"][0]["target"]
+        card_id = target.split("/")[-1]
+        # Card exists with no source-note attachment.
+        status, card = make_request_port(
+            self.port, "GET", f"/api/cards/alpha/backlog/{card_id}")
+        self.assertEqual(status, 200)
+        self.assertEqual(card.get("attachments") or [], [])
+
+    def test_apply_rejects_non_list_operations(self):
+        status, _ = make_request_port(
+            self.port, "POST", "/api/briefing/apply", {"operations": "nope"})
+        self.assertEqual(status, 400)
 
 
 class TestChatEndpoint(unittest.TestCase):

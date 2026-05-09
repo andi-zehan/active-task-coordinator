@@ -1668,6 +1668,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   </div>
   <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
   <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
+  <button class="header-btn top-btn" id="btn-briefing" disabled title="Configure API token in Settings">&#128202; Briefing</button>
   <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar">&#128172; Chat</button>
   <button class="header-btn top-btn" id="btn-settings" title="LLM settings">&#9881; Settings</button>
 </div>
@@ -1865,6 +1866,65 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <div id="notes-result" style="font-size:13px;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
           <button id="btn-notes-close" class="btn-new-card">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── AI Briefing Modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="briefing-overlay">
+  <div class="modal modal-wide">
+    <button class="modal-close" id="briefing-close">&times;</button>
+    <div class="modal-body">
+      <!-- Step 1 -->
+      <div id="briefing-step-1">
+        <h2>AI Briefing — Prompt</h2>
+        <p style="font-size:13px;color:#5e6c84;margin:0 0 8px 0;">
+          The AI will walk your boards using this prompt and produce a focused briefing.
+          Edit it for this run, or click <em>Save as default</em> to keep your changes.
+        </p>
+        <div style="margin-bottom:8px;">
+          <textarea id="briefing-prompt" rows="14" style="width:100%;font-family:monospace;font-size:13px;padding:8px;border:1px solid #dfe1e6;border-radius:4px;box-sizing:border-box;"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-start;gap:8px;align-items:center;margin-bottom:12px;">
+          <button id="btn-briefing-save-prompt" class="btn-sm" disabled title="Persist the current text as your default briefing prompt.">Save as default</button>
+          <button id="btn-briefing-reset-prompt" class="btn-sm" title="Restore the textarea to the factory default prompt (does not persist until you click Save).">Reset to factory default</button>
+          <span id="briefing-prompt-status" style="font-size:12px;color:#5e6c84;"></span>
+        </div>
+        <div id="briefing-events" hidden style="margin-bottom:12px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;"></div>
+        <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+          <span id="briefing-spinner" hidden class="spinner-row"><span class="spinner"></span>Generating…</span>
+          <button id="btn-briefing-cancel" class="header-btn">Cancel</button>
+          <button id="btn-briefing-generate" class="btn-new-card">Generate</button>
+        </div>
+      </div>
+      <!-- Step 2 -->
+      <div id="briefing-step-2" hidden>
+        <h2>Briefing</h2>
+        <div id="briefing-text" style="font-size:14px;line-height:1.55;white-space:pre-wrap;background:#fff;border:1px solid #dfe1e6;border-radius:4px;padding:12px 14px;max-height:380px;overflow-y:auto;"></div>
+        <p id="briefing-summary" style="font-size:12px;color:#5e6c84;margin-top:8px;"></p>
+        <h3 style="font-size:14px;margin-top:14px;">Proposed actions</h3>
+        <div id="briefing-ops"></div>
+        <div id="briefing-refine-events" hidden style="margin-top:8px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:120px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="briefing-refine-form" style="margin-top:10px;padding:10px;background:#f4f5f7;border-radius:6px;display:flex;flex-direction:column;gap:6px;">
+          <textarea id="briefing-refine-text" placeholder="Tell the AI what to change before applying…" style="width:100%;box-sizing:border-box;min-height:60px;padding:6px 8px;border:1px solid #dfe1e6;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+          <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
+            <span id="briefing-refine-spinner" hidden class="spinner-row"><span class="spinner"></span>Revising…</span>
+            <button id="btn-briefing-refine-send" class="btn-sm primary">Ask AI to revise</button>
+          </div>
+        </div>
+        <div class="modal-actions" style="display:flex;justify-content:space-between;gap:8px;margin-top:12px;align-items:center;">
+          <button id="btn-briefing-back" class="header-btn">← Back</button>
+          <button id="btn-briefing-apply" class="btn-new-card">Apply</button>
+        </div>
+      </div>
+      <!-- Step 3 -->
+      <div id="briefing-step-3" hidden>
+        <h2>Result</h2>
+        <div id="briefing-result" style="font-size:13px;"></div>
+        <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+          <button id="btn-briefing-close-final" class="btn-new-card">Close</button>
         </div>
       </div>
     </div>
@@ -4038,14 +4098,21 @@ document.getElementById('btn-test-conn').addEventListener('click', async () => {
 });
 
 async function refreshNotesButtonState() {
-  const btn = document.getElementById('btn-process-notes');
-  if (!btn) return;
+  const notesBtn = document.getElementById('btn-process-notes');
+  const briefingBtn = document.getElementById('btn-briefing');
   try {
     const cfg = await api.get('/api/llm-config');
-    btn.disabled = !cfg.configured;
-    btn.title = cfg.configured ? 'Process meeting notes' : 'Configure API token in Settings';
+    if (notesBtn) {
+      notesBtn.disabled = !cfg.configured;
+      notesBtn.title = cfg.configured ? 'Process meeting notes' : 'Configure API token in Settings';
+    }
+    if (briefingBtn) {
+      briefingBtn.disabled = !cfg.configured;
+      briefingBtn.title = cfg.configured ? 'Generate an AI briefing' : 'Configure API token in Settings';
+    }
   } catch {
-    btn.disabled = true;
+    if (notesBtn) notesBtn.disabled = true;
+    if (briefingBtn) briefingBtn.disabled = true;
   }
 }
 
@@ -4804,6 +4871,321 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
 });
 
+/* ================================================================
+   AI Briefing — modal, streaming, prompt persistence
+   ================================================================ */
+const briefingState = {
+  id: null,
+  ops: [],
+  text: '',
+  // The currently-persisted prompt, as last loaded from /api/app-config.
+  // Empty string means "no override; use factory default".
+  persistedPrompt: '',
+  factoryDefault: '',
+};
+
+function showBriefingStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`briefing-step-${i}`).hidden = (i !== n);
+  }
+}
+
+function closeBriefingModal() {
+  document.getElementById('briefing-overlay').classList.remove('visible');
+}
+
+function briefingEffectivePrompt() {
+  // Modal opens with the persisted override if non-empty, else the factory default.
+  return briefingState.persistedPrompt || briefingState.factoryDefault;
+}
+
+function syncBriefingSaveButton() {
+  const ta = document.getElementById('briefing-prompt');
+  const saveBtn = document.getElementById('btn-briefing-save-prompt');
+  const status = document.getElementById('briefing-prompt-status');
+  const current = ta.value;
+  const dirty = current !== briefingState.persistedPrompt
+             && !(current === briefingState.factoryDefault && briefingState.persistedPrompt === '');
+  saveBtn.disabled = !dirty;
+  if (briefingState.persistedPrompt && current === briefingState.persistedPrompt) {
+    status.textContent = 'Using your saved default.';
+  } else if (!briefingState.persistedPrompt && current === briefingState.factoryDefault) {
+    status.textContent = 'Using the factory default.';
+  } else if (dirty) {
+    status.textContent = 'Unsaved changes — click Save to persist.';
+  } else {
+    status.textContent = '';
+  }
+}
+
+async function loadBriefingPromptConfig() {
+  const cfg = await api.get('/api/app-config');
+  briefingState.persistedPrompt = cfg.briefing_prompt || '';
+  briefingState.factoryDefault = cfg.briefing_prompt_default || '';
+}
+
+function formatBriefingEvent(ev) {
+  switch (ev.type) {
+    case 'started':  return `🟢 Started — ${ev.briefing_id}`;
+    case 'turn':     return `↻ Turn ${ev.n}`;
+    case 'tool': {
+      const a = ev.args || {};
+      if (ev.name === 'list_overdue')        return `⏰ list_overdue`;
+      if (ev.name === 'list_due_today')      return `📅 list_due_today`;
+      if (ev.name === 'list_due_this_week')  return `🗓 list_due_this_week`;
+      if (ev.name === 'find_by_label')       return `🏷 find_by_label "${a.label || ''}"`;
+      if (ev.name === 'find_by_assignee')    return `👤 find_by_assignee "${a.name || ''}"`;
+      if (ev.name === 'get_card_by_id')      return `📄 get_card_by_id ${a.id || '?'}`;
+      if (ev.name === 'search_cards')        return `🔍 search_cards "${a.query || ''}"`;
+      if (ev.name === 'list_boards')         return `📚 list_boards`;
+      if (ev.name === 'list_cards')          return `📋 list_cards ${a.board || '?'}${a.list ? '/' + a.list : ''}`;
+      if (ev.name === 'create_card')         return `➕ create_card "${a.title || ''}" → ${a.board || '?'}/${a.list || '?'}`;
+      if (ev.name === 'add_comment')         return `💬 add_comment on ${a.id || '?'}`;
+      if (ev.name === 'tick_checklist')      return `☑️ tick "${a.item || ''}" on ${a.id || '?'}`;
+      if (ev.name === 'add_checklist_item')  return `➕ checklist item "${a.item || ''}" on ${a.id || '?'}`;
+      if (ev.name === 'move_card')           return `↪️ move ${a.id || '?'} → ${a.target_list || '?'}`;
+      if (ev.name === 'update_field')        return `✏️ update ${a.field || '?'} on ${a.id || '?'}`;
+      if (ev.name === 'rename_card')         return `✏️ rename ${a.id || '?'}`;
+      if (ev.name === 'finish')              return `🏁 finish`;
+      return `→ ${ev.name}`;
+    }
+    case 'result':   return `   ${ev.summary || ''}`;
+    case 'queued':   return `   queued ${ev.op}`;
+    case 'text':     return ``;  // text is rendered live in the briefing pane
+    case 'finish':   return `🏁 ${ev.summary || ''}`;
+    case 'done':     return `✅ Done — ${(ev.operations || []).length} op(s) proposed`;
+    case 'error':    return `❌ ${ev.message || 'error'}`;
+    default:         return '';
+  }
+}
+
+function appendBriefingEvent(panelId, text) {
+  if (!text) return;
+  const panel = document.getElementById(panelId);
+  const line = document.createElement('div');
+  line.textContent = text;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+async function streamBriefing(prompt, onEvent) {
+  const r = await fetch('/api/briefing/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!r.ok) throw new Error(`POST /api/briefing/generate: ${r.status}`);
+  return await consumeBriefingSse(r);
+}
+
+async function streamBriefingRefine(briefingId, currentOps, currentText, feedback, onEvent) {
+  const r = await fetch('/api/briefing/refine', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify({
+      briefing_id: briefingId,
+      current_ops: currentOps,
+      current_text: currentText,
+      feedback,
+    }),
+  });
+  if (!r.ok) throw new Error(`POST /api/briefing/refine: ${r.status}`);
+  return await consumeBriefingSse(r, onEvent);
+}
+
+async function consumeBriefingSse(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let lastDone = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const dataLines = block.split('\n')
+        .filter(l => l.startsWith('data:'))
+        .map(l => l.slice(5).trimStart());
+      if (!dataLines.length) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLines.join('\n')); }
+      catch { continue; }
+      if (typeof onEvent === 'function') onEvent(parsed);
+      if (parsed.type === 'done') lastDone = parsed;
+      if (parsed.type === 'error') throw new Error(parsed.message || 'briefing error');
+    }
+  }
+  if (!lastDone) throw new Error('stream ended without a done event');
+  return lastDone;
+}
+
+function renderBriefingText(text) {
+  // Render the briefing markdown-ish text with [[C-N]] chips clickable.
+  document.getElementById('briefing-text').innerHTML = linkifyHtml(text || '');
+}
+
+function renderBriefingOps(ops) {
+  renderOpsRows(ops, document.getElementById('briefing-ops'));
+}
+
+document.getElementById('btn-briefing').addEventListener('click', async () => {
+  const evts = document.getElementById('briefing-events');
+  evts.hidden = true;
+  evts.innerHTML = '';
+  document.getElementById('briefing-spinner').hidden = true;
+  showBriefingStep(1);
+  document.getElementById('briefing-overlay').classList.add('visible');
+  try {
+    await loadBriefingPromptConfig();
+  } catch (err) {
+    document.getElementById('briefing-prompt-status').textContent =
+      `Couldn't load prompt config: ${err.message}`;
+  }
+  document.getElementById('briefing-prompt').value = briefingEffectivePrompt();
+  syncBriefingSaveButton();
+});
+
+document.getElementById('briefing-close').addEventListener('click', closeBriefingModal);
+document.getElementById('btn-briefing-cancel').addEventListener('click', closeBriefingModal);
+document.getElementById('btn-briefing-close-final').addEventListener('click', closeBriefingModal);
+document.getElementById('briefing-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('briefing-overlay')) closeBriefingModal();
+});
+
+document.getElementById('briefing-prompt').addEventListener('input', syncBriefingSaveButton);
+
+document.getElementById('btn-briefing-reset-prompt').addEventListener('click', () => {
+  document.getElementById('briefing-prompt').value = briefingState.factoryDefault;
+  syncBriefingSaveButton();
+});
+
+document.getElementById('btn-briefing-save-prompt').addEventListener('click', async () => {
+  const ta = document.getElementById('briefing-prompt');
+  const saveBtn = document.getElementById('btn-briefing-save-prompt');
+  const status = document.getElementById('briefing-prompt-status');
+  saveBtn.disabled = true;
+  status.textContent = 'Saving…';
+  try {
+    // If the textarea matches the factory default, persist an empty string —
+    // that's how we encode "no override" (keeps the JSON tidy).
+    const valueToSave = (ta.value === briefingState.factoryDefault) ? '' : ta.value;
+    const resp = await api.put('/api/app-config', { briefing_prompt: valueToSave });
+    briefingState.persistedPrompt = resp.briefing_prompt || '';
+    syncBriefingSaveButton();
+    status.textContent = 'Saved.';
+  } catch (err) {
+    status.textContent = `Save failed: ${err.message}`;
+    syncBriefingSaveButton();
+  }
+});
+
+document.getElementById('btn-briefing-generate').addEventListener('click', async () => {
+  const prompt = document.getElementById('briefing-prompt').value.trim();
+  if (!prompt) return;
+  const evts = document.getElementById('briefing-events');
+  const spinner = document.getElementById('briefing-spinner');
+  const generateBtn = document.getElementById('btn-briefing-generate');
+  evts.hidden = false;
+  evts.innerHTML = '';
+  generateBtn.disabled = true;
+  spinner.hidden = false;
+  try {
+    const result = await streamBriefing(prompt, (ev) => {
+      appendBriefingEvent('briefing-events', formatBriefingEvent(ev));
+    });
+    briefingState.id = result.briefing_id;
+    briefingState.ops = result.operations || [];
+    briefingState.text = result.text || '';
+    document.getElementById('briefing-summary').textContent =
+      `${briefingState.id} — ${result.summary || ''}`;
+    renderBriefingText(briefingState.text);
+    renderBriefingOps(briefingState.ops);
+    showBriefingStep(2);
+  } catch (err) {
+    appendBriefingEvent('briefing-events', `❌ ${err.message}`);
+    alert('Briefing failed: ' + err.message);
+  } finally {
+    generateBtn.disabled = false;
+    spinner.hidden = true;
+  }
+});
+
+document.getElementById('btn-briefing-back').addEventListener('click', () => showBriefingStep(1));
+
+(function wireBriefingRefine() {
+  const textEl = document.getElementById('briefing-refine-text');
+  const sendBtn = document.getElementById('btn-briefing-refine-send');
+  const applyBtn = document.getElementById('btn-briefing-apply');
+  const evts = document.getElementById('briefing-refine-events');
+  const spinner = document.getElementById('briefing-refine-spinner');
+  const send = async () => {
+    const feedback = textEl.value.trim();
+    if (!feedback || !briefingState.id) return;
+    sendBtn.disabled = true;
+    applyBtn.disabled = true;
+    spinner.hidden = false;
+    evts.hidden = false;
+    evts.innerHTML = '';
+    try {
+      const result = await streamBriefingRefine(
+        briefingState.id, briefingState.ops, briefingState.text, feedback,
+        (ev) => appendBriefingEvent('briefing-refine-events', formatBriefingEvent(ev)),
+      );
+      briefingState.ops = result.operations || [];
+      briefingState.text = result.text || '';
+      document.getElementById('briefing-summary').textContent =
+        `${briefingState.id} — ${result.summary || ''}`;
+      renderBriefingText(briefingState.text);
+      renderBriefingOps(briefingState.ops);
+      textEl.value = '';
+    } catch (err) {
+      appendBriefingEvent('briefing-refine-events', `❌ ${err.message}`);
+      alert('Refine failed: ' + err.message);
+    } finally {
+      sendBtn.disabled = false;
+      applyBtn.disabled = false;
+      spinner.hidden = true;
+    }
+  };
+  sendBtn.addEventListener('click', send);
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+})();
+
+document.getElementById('btn-briefing-apply').addEventListener('click', async () => {
+  const selected = collectSelectedOps(document.getElementById('briefing-ops'), briefingState.ops);
+  const applyBtn = document.getElementById('btn-briefing-apply');
+  const origLabel = applyBtn.textContent;
+  applyBtn.disabled = true;
+  applyBtn.style.display = 'inline-flex';
+  applyBtn.style.alignItems = 'center';
+  applyBtn.style.gap = '6px';
+  applyBtn.innerHTML = '<span class="spinner" style="border-color:#fff5;border-top-color:#fff;"></span> Applying…';
+  let result;
+  try {
+    result = await api.post('/api/briefing/apply', { operations: selected });
+  } catch (err) {
+    applyBtn.disabled = false;
+    applyBtn.textContent = origLabel;
+    alert('Apply failed: ' + err.message);
+    return;
+  }
+  const out = document.getElementById('briefing-result');
+  const skipped = result.skipped || [];
+  const applied = result.applied || [];
+  out.innerHTML = `
+    <p>✓ Applied ${applied.length} operation(s).</p>
+    ${skipped.length ? `<p>✗ Skipped ${skipped.length}:</p>
+      <ul>${skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('')}</ul>` : ''}
+  `;
+  showBriefingStep(3);
+  if (typeof refreshCurrentView === 'function') refreshCurrentView();
+});
+
 // Modal close
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-overlay').addEventListener('click', (e) => {
@@ -4827,6 +5209,8 @@ document.addEventListener('keydown', (e) => {
       closeSettings();
     } else if (document.getElementById('notes-overlay') && document.getElementById('notes-overlay').classList.contains('visible')) {
       document.getElementById('notes-overlay').classList.remove('visible');
+    } else if (document.getElementById('briefing-overlay') && document.getElementById('briefing-overlay').classList.contains('visible')) {
+      document.getElementById('briefing-overlay').classList.remove('visible');
     } else if (searchDropdown.classList.contains('visible')) {
       searchDropdown.classList.remove('visible');
       searchInput.value = '';
