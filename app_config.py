@@ -25,9 +25,13 @@ DEFAULT_DATA_DIR = _default_data_dir()
 DEFAULTS = {
     "data_dir": str(DEFAULT_DATA_DIR),
     "seen_api_key_prompt": False,
+    # Empty string == "use the factory default from briefing.DEFAULT_PROMPT".
+    # We don't materialize the default here so the JSON stays tidy until
+    # the user actively customizes it.
+    "briefing_prompt": "",
 }
 
-USER_WRITABLE_KEYS = ("data_dir", "seen_api_key_prompt")
+USER_WRITABLE_KEYS = ("data_dir", "seen_api_key_prompt", "briefing_prompt")
 
 
 class ValidationError(Exception):
@@ -72,9 +76,13 @@ def get_data_dir() -> Path:
 
 def public_view() -> dict:
     cfg = load()
+    # Lazy import to avoid app_config ↔ briefing ↔ notes ↔ server cycle.
+    import briefing
     return {
         "data_dir": cfg["data_dir"],
         "seen_api_key_prompt": bool(cfg["seen_api_key_prompt"]),
+        "briefing_prompt": cfg["briefing_prompt"],
+        "briefing_prompt_default": briefing.DEFAULT_PROMPT,
     }
 
 
@@ -100,6 +108,9 @@ def validate(updates: dict) -> None:
     if "seen_api_key_prompt" in updates:
         if not isinstance(updates["seen_api_key_prompt"], bool):
             raise ValidationError("seen_api_key_prompt must be a boolean")
+    if "briefing_prompt" in updates:
+        if not isinstance(updates["briefing_prompt"], str):
+            raise ValidationError("briefing_prompt must be a string")
 
 
 def sanitize_user_updates(updates: dict) -> dict:

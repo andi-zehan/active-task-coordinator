@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 import llm_config
 import notes
+import briefing
 import janitor
 import sync_config
 import data_repo
@@ -605,6 +606,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         # /api/notes/apply
         if path == '/api/notes/apply' and method == 'POST':
             return self._handle_notes_apply()
+
+        # /api/briefing/{generate,refine,apply}
+        if path == '/api/briefing/generate' and method == 'POST':
+            return self._handle_briefing_generate()
+        if path == '/api/briefing/refine' and method == 'POST':
+            return self._handle_briefing_refine()
+        if path == '/api/briefing/apply' and method == 'POST':
+            return self._handle_briefing_apply()
 
         # /api/notes/:id
         m = re.match(r'^/api/notes/([\w\-.]+)$', path)
@@ -1222,6 +1231,113 @@ class RequestHandler(BaseHTTPRequestHandler):
         if not isinstance(operations, list):
             return self._send_error(400, 'operations list required')
         result = notes.apply_operations(operations, note_id)
+        self._send_json(result)
+
+    def _handle_briefing_generate(self):
+        """Stream the briefing tool-use loop as Server-Sent Events."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        prompt = (body.get('prompt') or '').strip()
+        if not prompt:
+            return self._send_error(400, 'prompt is required')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            for event in briefing.analyze_stream(prompt,
+                                                 model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_briefing_refine(self):
+        """Stream a briefing refine pass."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        briefing_id = (body.get('briefing_id') or '').strip()
+        feedback = (body.get('feedback') or '').strip()
+        current_ops = body.get('current_ops', [])
+        current_text = body.get('current_text', '') or ''
+        if not briefing_id:
+            return self._send_error(400, 'briefing_id is required')
+        if not feedback:
+            return self._send_error(400, 'feedback is required')
+        if not isinstance(current_ops, list):
+            return self._send_error(400, 'current_ops must be a list')
+        if not isinstance(current_text, str):
+            return self._send_error(400, 'current_text must be a string')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            for event in briefing.refine_stream(briefing_id, current_ops,
+                                                current_text, feedback,
+                                                model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_briefing_apply(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        operations = body.get('operations', [])
+        if not isinstance(operations, list):
+            return self._send_error(400, 'operations list required')
+        result = briefing.apply_operations(operations)
         self._send_json(result)
 
     def _handle_get_note(self, note_id):
