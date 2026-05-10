@@ -44,10 +44,12 @@ Use read tools liberally — list_overdue, list_due_today, list_due_this_week,
 get_card_by_id, find_by_label — before forming conclusions. Do NOT include
 cards that are already in 'done'.
 
-If you spot obvious housekeeping (a finished checklist item still unchecked,
-a card stuck in the wrong list, a stale assignee), propose the corresponding
-write-tool ops. Don't overdo it — only suggest changes that the briefing
-itself motivates."""
+Only propose write-tool ops when the change is clearly justified by what
+you found — e.g. a checklist item the user explicitly said was done, a card
+the user told you to move, a relation that is plainly wrong. Default to
+proposing nothing. If you're unsure whether the user wants a change, leave
+it out and mention it in the briefing text instead. A briefing with zero
+queued ops is the normal case, not a failure."""
 
 
 SYSTEM_PROMPT = """You are an executive assistant inside a personal kanban app.
@@ -67,8 +69,12 @@ Workflow:
   matters.
 - Write the briefing as MARKDOWN inside text content blocks (not tool args).
   Reference cards as [[C-N]] so they render as clickable chips.
-- If — and only if — the briefing motivates concrete actions, queue them via
-  the write tools. Don't propose ops just because they're available.
+- Be conservative about queuing write ops. Only queue an op when the
+  evidence makes the change unambiguous (e.g. the user explicitly said a
+  task is done, a card is plainly in the wrong list per its own body, a
+  relation is clearly stale). If a change is merely plausible or "would
+  be nice", DO NOT queue it — surface it as a suggestion in the briefing
+  text and let the user ask. Zero queued ops is the expected default.
 - When done, call `finish` with a short meta-summary. The full briefing lives
   in your text blocks, not in finish args.
 
@@ -91,9 +97,10 @@ Refining:
 FINISH_TOOL_DEF = {
     "name": "finish",
     "description": (
-        "Call once you have written the briefing in text content blocks "
-        "and proposed any warranted write ops. Provide a 1–2 sentence "
-        "meta-summary (the briefing itself is your text, not the summary)."
+        "Call once the briefing is written in text content blocks. Queuing "
+        "write ops is optional — only do so when clearly justified (most "
+        "briefings queue zero). Provide a 1–2 sentence meta-summary (the "
+        "briefing itself is your text, not the summary)."
     ),
     "input_schema": {
         "type": "object",
