@@ -1583,9 +1583,25 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-size: 12px;
   color: #5e6c84;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .comment-meta .comment-author { font-weight: 600; color: #172b4d; }
-.comment-meta .comment-date { color: #97a0af; margin-left: 6px; }
+.comment-meta .comment-date { color: #97a0af; }
+.comment-meta .remove-comment {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: #e74c3c;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.comment-item:hover .remove-comment { opacity: 1; }
 .comment-text {
   font-size: 14px;
   line-height: 1.5;
@@ -2836,6 +2852,7 @@ function setupSwimlaneDrag(container) {
       lane.classList.add('dragging-lane');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', lane.dataset.board);
+      startDragAutoScroll();
     });
 
     lane.addEventListener('dragend', () => {
@@ -2845,6 +2862,7 @@ function setupSwimlaneDrag(container) {
         l.classList.remove('drop-target-above', 'drop-target-below');
       });
       draggedLane = null;
+      stopDragAutoScroll();
     });
   });
 
@@ -2938,11 +2956,13 @@ function createCardElement(card) {
       card: card.slug, board: currentBoard, list: currentList,
     }));
     e.dataTransfer.effectAllowed = 'move';
+    startDragAutoScroll();
   });
   cardEl.addEventListener('dragend', () => {
     cardEl.classList.remove('dragging');
     document.querySelectorAll('.column-cards.drag-over').forEach(c => c.classList.remove('drag-over'));
     removeDropIndicators();
+    stopDragAutoScroll();
   });
 
   return cardEl;
@@ -2967,6 +2987,46 @@ function updateCardCount(cardsContainer) {
 
 function removeDropIndicators() {
   document.querySelectorAll('.card-drop-indicator').forEach(el => el.remove());
+}
+
+// Edge-scroll while dragging — HTML5 native DnD does not auto-scroll the
+// page, so the user can't drop onto a target that's offscreen. We listen for
+// pointer position via dragover and scroll <body> (the scrolling element on
+// this app) when within EDGE px of the top or bottom.
+const dragScroll = { active: false, y: 0, raf: 0 };
+function startDragAutoScroll() {
+  if (dragScroll.active) return;
+  dragScroll.active = true;
+  window.addEventListener('dragover', _trackDragY, true);
+  _stepDragScroll();
+}
+function stopDragAutoScroll() {
+  if (!dragScroll.active) return;
+  dragScroll.active = false;
+  window.removeEventListener('dragover', _trackDragY, true);
+  cancelAnimationFrame(dragScroll.raf);
+  dragScroll.raf = 0;
+}
+function _trackDragY(e) {
+  dragScroll.y = e.clientY;
+}
+function _stepDragScroll() {
+  if (!dragScroll.active) return;
+  const EDGE = 60;     // px from top/bottom that triggers scrolling
+  const MAX_SPEED = 18; // px per frame at the very edge
+  const vh = window.innerHeight;
+  const y = dragScroll.y;
+  let dy = 0;
+  if (y < EDGE) {
+    dy = -MAX_SPEED * (1 - y / EDGE);
+  } else if (y > vh - EDGE) {
+    dy = MAX_SPEED * (1 - (vh - y) / EDGE);
+  }
+  if (dy !== 0) {
+    const el = document.scrollingElement || document.documentElement;
+    el.scrollTop += dy;
+  }
+  dragScroll.raf = requestAnimationFrame(_stepDragScroll);
 }
 
 function showDropIndicator(container, y) {
@@ -3121,11 +3181,13 @@ async function renderDashboard() {
         board: el.dataset.board, list: el.dataset.list, card: el.dataset.card,
       }));
       e.dataTransfer.effectAllowed = 'move';
+      startDragAutoScroll();
     });
     el.addEventListener('dragend', () => {
       el.classList.remove('dragging');
       container.querySelectorAll('.dash-section.drag-over')
         .forEach(s => s.classList.remove('drag-over', 'no-drop'));
+      stopDragAutoScroll();
     });
   });
 
@@ -3616,9 +3678,14 @@ function renderModal(card) {
   html += `<div class="modal-section${comments.length ? '' : ' empty'}">
     <div class="modal-section-title">Comments${comments.length ? `<span class="count">${comments.length}</span>` : ''}</div>
     <div id="comments-list">`;
-  for (const c of comments) {
+  for (let i = 0; i < comments.length; i++) {
+    const c = comments[i];
     html += `<div class="comment-item">
-      <div class="comment-meta"><span class="comment-author">${escHtml(c.author)}</span><span class="comment-date">${escHtml(c.date)}</span></div>
+      <div class="comment-meta">
+        <span class="comment-author">${escHtml(c.author)}</span>
+        <span class="comment-date">${escHtml(c.date)}</span>
+        <button class="remove-comment" data-index="${i}" title="Delete comment">&times;</button>
+      </div>
       <div class="comment-text">${linkifyHtml(c.text)}</div>
     </div>`;
   }
@@ -3984,6 +4051,21 @@ function renderModal(card) {
     state.modalCard = updated;
     renderModal(updated);
     refreshCurrentView();
+  });
+
+  // Remove comment
+  body.querySelectorAll('.remove-comment').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this comment?')) return;
+      const idx = parseInt(btn.dataset.index, 10);
+      const updated = await api.put(
+        `/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`,
+        { delete_comment_index: idx },
+      );
+      state.modalCard = updated;
+      renderModal(updated);
+      refreshCurrentView();
+    });
   });
 
   // Delete card
@@ -5239,10 +5321,17 @@ function resetBriefingApplyButton() {
   // to step 2 (after a Back+regenerate) would see "Applying…" frozen on.
   const btn = document.getElementById('btn-briefing-apply');
   btn.disabled = false;
-  btn.textContent = 'Apply';
   btn.style.display = '';
   btn.style.alignItems = '';
   btn.style.gap = '';
+  syncBriefingApplyLabel();
+}
+
+function syncBriefingApplyLabel() {
+  // When the model proposes zero ops, "Apply" makes no sense — relabel the
+  // primary button so the user knows clicking just dismisses the briefing.
+  const btn = document.getElementById('btn-briefing-apply');
+  btn.textContent = (briefingState.ops && briefingState.ops.length) ? 'Apply' : 'OK';
 }
 
 function renderBriefingOps(ops) {
@@ -5359,6 +5448,7 @@ document.getElementById('btn-briefing-back').addEventListener('click', () => sho
         `${briefingState.id} — ${result.summary || ''}`;
       renderBriefingText(briefingState.text);
       renderBriefingOps(briefingState.ops);
+      syncBriefingApplyLabel();
       textEl.value = '';
     } catch (err) {
       appendBriefingEvent('briefing-refine-events', `❌ ${err.message}`);
@@ -5376,6 +5466,11 @@ document.getElementById('btn-briefing-back').addEventListener('click', () => sho
 })();
 
 document.getElementById('btn-briefing-apply').addEventListener('click', async () => {
+  // Zero proposed ops → button is "OK", just dismiss without an apply roundtrip.
+  if (!briefingState.ops || !briefingState.ops.length) {
+    closeBriefingModal();
+    return;
+  }
   const selected = collectSelectedOps(document.getElementById('briefing-ops'), briefingState.ops);
   const applyBtn = document.getElementById('btn-briefing-apply');
   const origLabel = applyBtn.textContent;

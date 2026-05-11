@@ -44,6 +44,12 @@ Use read tools liberally — list_overdue, list_due_today, list_due_this_week,
 get_card_by_id, find_by_label — before forming conclusions. Do NOT include
 cards that are already in 'done'.
 
+Once you've narrowed down to your shortlist, call `get_card_by_id` on each
+candidate and READ THE `## Comments` SECTION OF THE BODY. Comments are where
+the user records the latest status, blockers, decisions, and next steps —
+they often change what the card is really about and what should be said in
+the briefing. Skipping them produces shallow, out-of-date summaries.
+
 Only propose write-tool ops when the change is clearly justified by what
 you found — e.g. a checklist item the user explicitly said was done, a card
 the user told you to move, a relation that is plainly wrong. Default to
@@ -67,6 +73,11 @@ Workflow:
   get_card_by_id, search_cards. The BOARD INDEX in the first user message
   is a cached overview; pull card bodies via get_card_by_id when context
   matters.
+- For every card you decide to highlight, ALWAYS call `get_card_by_id` and
+  read its full body — the `## Comments` section in particular often holds
+  the most recent status update, a blocker, or a decision that changes the
+  framing. Use that context in the briefing text rather than relying on
+  title + due date alone.
 - Write the briefing as MARKDOWN inside text content blocks (not tool args).
   Reference cards as [[C-N]] so they render as clickable chips.
 - Be conservative about queuing write ops. Only queue an op when the
@@ -258,7 +269,7 @@ def analyze_stream(user_prompt: str, *, model: str, client,
                     "type": "text",
                     "text": (
                         f"BRIEFING_ID: {briefing_id}\n"
-                        f"TODAY: {date.today().isoformat()}\n\n"
+                        f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
                         f"USER REQUEST:\n{user_prompt}"
                     ),
                 },
@@ -330,7 +341,7 @@ def refine_stream(briefing_id: str, current_ops: list, current_text: str,
                     "type": "text",
                     "text": (
                         f"BRIEFING_ID: {briefing_id}\n"
-                        f"TODAY: {date.today().isoformat()}\n\n"
+                        f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
                         f"{prev_text_block}\n\n"
                         f"{proposals_block}\n\n"
                         f"USER FEEDBACK:\n{feedback}\n\n"

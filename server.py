@@ -416,6 +416,32 @@ def write_board_meta(board_slug, meta):
             write_json(order_file, [])
 
 
+def _delete_comment_at(body: str, index: int) -> str:
+    """Remove the Nth comment (0-based, in document order) from a card body.
+
+    Mirrors the parser in index.html's parseComments: the `## Comments` section
+    contains blocks separated by a blank line that begin with `**YYYY-MM-DD - Author:**`.
+    Anything that doesn't match that header (free-form markdown, legacy text) is
+    preserved untouched. Out-of-range indices leave the body unchanged.
+    """
+    m = re.search(r'(## Comments\n\n)([\s\S]*)$', body)
+    if not m:
+        return body
+    head = body[:m.start(2)]
+    section = m.group(2)
+    blocks = re.split(r'\n\n(?=\*\*)', section)
+    comment_positions = [i for i, b in enumerate(blocks)
+                         if re.match(r'^\*\*.+? - .+?:\*\*\n', b)]
+    if index < 0 or index >= len(comment_positions):
+        return body
+    target = comment_positions[index]
+    blocks.pop(target)
+    new_section = '\n\n'.join(blocks)
+    if new_section and not new_section.endswith('\n'):
+        new_section += '\n'
+    return head + new_section
+
+
 def ensure_data_dir():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     boards_order = DATA_DIR / "_boards-order.json"
@@ -829,6 +855,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             today_str = str(date.today())
             comment_text = data['comment']
             body = body.rstrip('\n') + f"\n\n**{today_str} - Me:**\n{comment_text}\n"
+
+        # Delete a comment by index (0-based, in display order)
+        if 'delete_comment_index' in data:
+            try:
+                idx = int(data['delete_comment_index'])
+            except (TypeError, ValueError):
+                return self._send_error(400, 'delete_comment_index must be an integer')
+            body = _delete_comment_at(body, idx)
 
         card['updated'] = str(date.today())
         meta = {k: v for k, v in card.items() if k not in ('slug', 'board', 'list', 'body')}
