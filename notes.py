@@ -33,6 +33,11 @@ def build_toc() -> dict:
             continue
         cards = []
         for list_slug in server.LISTS:
+            # Cards in 'done' are read-only for the LLM flows — hiding them
+            # from the index is the cheapest way to prevent the model from
+            # proposing modifications it's not allowed to make.
+            if list_slug == "done":
+                continue
             order_file = server.DATA_DIR / "boards" / board_slug / list_slug / "_order.json"
             if not order_file.exists():
                 continue
@@ -122,6 +127,12 @@ Workflow:
 Rules:
 - Only reference boards, lists, and cards that exist (per the INDEX or get_card_by_id).
 - For new cards, default to list 'backlog' unless the note clearly implies another stage.
+- Cards in the 'done' list are READ-ONLY. Never propose any operation that
+  targets a card whose list is 'done' (no add_comment, tick_checklist,
+  add_checklist_item, move_card, update_field, or rename_card on a done
+  card). The INDEX deliberately omits done cards; if you fetch one with
+  get_card_by_id and see list='done', leave it alone. Likewise, do not
+  create new cards directly into 'done'.
 - confidence: 'high' = explicit, 'med' = strongly implied, 'low' = speculative.
 - reason: cite the specific phrase or fact in the note that motivated the op.
 
@@ -227,7 +238,8 @@ def _build_card_body(description: str, checklist: list[str]) -> str:
 
 
 def _locate(op: dict) -> tuple[str, str, str]:
-    """Resolve an id-based op to (board, list, id). Raises ValueError if unknown."""
+    """Resolve an id-based op to (board, list, id). Raises ValueError if unknown
+    or if the card is in 'done' (which is read-only for LLM-driven flows)."""
     cid = op.get("id")
     if not cid:
         raise ValueError("op missing 'id'")
@@ -235,6 +247,8 @@ def _locate(op: dict) -> tuple[str, str, str]:
     if located is None:
         raise ValueError(f"unknown id: {cid}")
     board, list_slug = located
+    if list_slug == "done":
+        raise ValueError(f"{cid} is in 'done' — done cards are read-only")
     return board, list_slug, cid
 
 
@@ -243,6 +257,8 @@ def _do_create_card(op: dict, note_id: str) -> dict:
     list_slug = op["list"]
     if list_slug not in server.LISTS:
         raise ValueError(f"invalid list '{list_slug}'")
+    if list_slug == "done":
+        raise ValueError("cannot create a card directly in 'done'")
     if server.read_board_meta(board) is None:
         raise ValueError("target board missing")
     title = op["title"]

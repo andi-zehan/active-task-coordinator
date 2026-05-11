@@ -155,9 +155,20 @@ def next_id() -> str:
 
 
 def resolve_id(card_id: str) -> tuple[str, str] | None:
-    """Return (board, list) for the given id, or None if unknown."""
+    """Return (board, list) for the given id, or None if unknown.
+
+    On a miss, rescan the data dir once and retry — the in-memory index can
+    drift from disk when cards are added/moved outside the server (git pull,
+    external editor, migration script). One miss = one full rescan, cheap
+    relative to the alternative of restarting the process.
+    """
+    global _ID_INDEX, _NEXT_ID_COUNTER
     with _ID_LOCK:
         _ensure_id_index()
+        hit = _ID_INDEX.get(card_id)
+        if hit is not None:
+            return hit
+        _ID_INDEX, _NEXT_ID_COUNTER = _scan_id_index()
         return _ID_INDEX.get(card_id)
 
 
@@ -903,11 +914,17 @@ class RequestHandler(BaseHTTPRequestHandler):
         src_order = [s for s in src_order if s != card_slug]
         write_json(src_order_path, src_order)
 
-        # Move the file
+        # Move the file, bumping `updated` so the janitor's 14-day archive
+        # clock restarts on every move (without this, moving an old card to
+        # 'done' could trigger immediate archival on the next janitor pass).
         src_path = DATA_DIR / "boards" / board_slug / list_slug / f"{card_slug}.md"
         dst_dir = DATA_DIR / "boards" / target_board / target_list
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst_path = dst_dir / f"{card_slug}.md"
+        card = read_card(board_slug, list_slug, card_slug)
+        if card is not None:
+            card['updated'] = str(date.today())
+            write_card(board_slug, list_slug, card_slug, card, card.get('body', ''))
         shutil.move(str(src_path), str(dst_path))
 
         # Insert into target order

@@ -4328,9 +4328,8 @@ document.getElementById('btn-settings').addEventListener('click', openSettings);
 })();
 document.getElementById('settings-close').addEventListener('click', closeSettings);
 document.getElementById('btn-cfg-cancel').addEventListener('click', closeSettings);
-cfgEls.overlay.addEventListener('click', (e) => {
-  if (e.target === cfgEls.overlay) closeSettings();
-});
+// Backdrop click is intentionally NOT wired — pending settings edits would
+// be discarded without warning if the user clicked outside the modal.
 
 document.getElementById('btn-cfg-save').addEventListener('click', async () => {
   // LLM
@@ -4920,9 +4919,9 @@ document.getElementById('btn-process-notes').addEventListener('click', () => {
 document.getElementById('notes-close').addEventListener('click', closeNotesModal);
 document.getElementById('btn-notes-cancel').addEventListener('click', closeNotesModal);
 document.getElementById('btn-notes-close').addEventListener('click', closeNotesModal);
-document.getElementById('notes-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('notes-overlay')) closeNotesModal();
-});
+// Backdrop click is intentionally NOT wired — the pasted note and any
+// proposed-op edits live only in memory; a stray click outside would discard
+// them without warning.
 
 function formatNotesEvent(ev) {
   switch (ev.type) {
@@ -5358,9 +5357,8 @@ document.getElementById('btn-briefing').addEventListener('click', async () => {
 document.getElementById('briefing-close').addEventListener('click', closeBriefingModal);
 document.getElementById('btn-briefing-cancel').addEventListener('click', closeBriefingModal);
 document.getElementById('btn-briefing-close-final').addEventListener('click', closeBriefingModal);
-document.getElementById('briefing-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('briefing-overlay')) closeBriefingModal();
-});
+// Backdrop click is intentionally NOT wired — the briefing text is only in
+// memory, so a stray click outside would discard it without warning.
 
 document.getElementById('briefing-prompt').addEventListener('input', syncBriefingSaveButton);
 
@@ -5500,11 +5498,10 @@ document.getElementById('btn-briefing-apply').addEventListener('click', async ()
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
 });
 
-// Modal close
+// Modal close — only via the explicit X (or Escape). Clicking the backdrop
+// does NOT close: too easy to lose an in-flight comment, label, or checklist
+// edit by missing the modal edge.
 document.getElementById('modal-close').addEventListener('click', closeModal);
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal-overlay')) closeModal();
-});
 
 // Close board edit popovers on outside click
 document.addEventListener('click', () => {
