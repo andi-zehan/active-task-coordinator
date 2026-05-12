@@ -607,6 +607,23 @@ a { color: #0052cc; text-decoration: none; }
   padding: 2px;
   padding-bottom: 4px;
 }
+/* Done is bounded so completed work doesn't dominate the swimlane.
+   Fade-mask hints "more below"; cleared when the user has scrolled to
+   the bottom so the last card isn't dimmed. Dropping anywhere on the
+   visible cards still works — only the deepest tail position needs a
+   scroll, which is fine since Done order rarely matters. */
+.board-column[data-list="done"] .column-cards {
+  max-height: 348px;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+}
+.board-column[data-list="done"] .column-cards.at-bottom {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+/* Done has no "+ New Card" — you move cards into Done, you don't create them there. */
+.board-column[data-list="done"] .column-add-card { display: none; }
 .column-cards.drag-over {
   background: rgba(0,82,204,0.06);
   border-radius: 6px;
@@ -747,6 +764,20 @@ a { color: #0052cc; text-decoration: none; }
 .dash-section.next-week { background: #82A0BC; }
 .dash-section.later { background: #6B8FB3; }
 .dash-section.someday { background: #545E75; }
+/* Cap the Someday section's body at roughly 7 cards — same rationale as
+   the Done column in Kanban: low-priority work shouldn't dominate the
+   dashboard. Fade-mask hints "more below"; cleared on scroll-to-bottom. */
+.dash-section.someday .dash-section-body {
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+}
+.dash-section.someday .dash-section-body.at-bottom {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
 .dash-section-title {
   display: flex;
   align-items: center;
@@ -3241,7 +3272,8 @@ async function renderDashboard() {
   function renderSection(title, cssClass, bucket, cards) {
     const groups = groupByBoard(cards);
     let html = `<div class="dash-section ${cssClass}" data-bucket="${bucket}">
-      <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span></div>`;
+      <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span></div>
+      <div class="dash-section-body">`;
     if (cards.length === 0) {
       html += '<div class="dash-empty">No cards</div>';
     } else {
@@ -3265,7 +3297,7 @@ async function renderDashboard() {
         }
       }
     }
-    html += '</div>';
+    html += '</div></div>';   // close .dash-section-body, then .dash-section
     return html;
   }
 
@@ -3368,6 +3400,10 @@ function updateCardChecklistBar(board, list, slug, card) {
 
 function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
   const sourceSection = cardEl.closest('.dash-section');
+  // Cards (and group titles) live inside .dash-section-body, not directly in
+  // the section. Targeting the body is critical for capped sections (Someday)
+  // where appending to the section would land the card outside the scroll.
+  const destBody = destSection.querySelector('.dash-section-body') || destSection;
 
   // Update the card's own due-date label and overdue class.
   const dueEl = cardEl.querySelector('.dash-due');
@@ -3377,16 +3413,16 @@ function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
   }
 
   // Find or create the per-board group inside the destination section.
-  const titles = [...destSection.querySelectorAll('.dash-group-title')];
+  const titles = [...destBody.querySelectorAll('.dash-group-title')];
   let groupTitle = titles.find(t => t.textContent === boardName);
   if (!groupTitle) {
     // Section may currently show "No cards" — clear it first.
-    const empty = destSection.querySelector('.dash-empty');
+    const empty = destBody.querySelector('.dash-empty');
     if (empty) empty.remove();
     groupTitle = document.createElement('div');
     groupTitle.className = 'dash-group-title';
     groupTitle.textContent = boardName;
-    destSection.appendChild(groupTitle);
+    destBody.appendChild(groupTitle);
   }
 
   // Insert the card right after the group's last card (or right after the title).
@@ -3402,8 +3438,10 @@ function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
   cardEl.classList.add('card-settling');
   cardEl.addEventListener('animationend', () => cardEl.classList.remove('card-settling'), { once: true });
 
-  // Clean up the source group: drop its title if empty, replace section body if empty.
-  const sourceTitles = [...sourceSection.querySelectorAll('.dash-group-title')];
+  // Clean up the source group: drop its title if empty, replace section body
+  // with the empty-state when the last card leaves.
+  const sourceBody = sourceSection.querySelector('.dash-section-body') || sourceSection;
+  const sourceTitles = [...sourceBody.querySelectorAll('.dash-group-title')];
   const sourceGroupTitle = sourceTitles.find(t => t.textContent === boardName);
   if (sourceGroupTitle) {
     const after = sourceGroupTitle.nextElementSibling;
@@ -3411,11 +3449,11 @@ function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
       sourceGroupTitle.remove();
     }
   }
-  if (!sourceSection.querySelector('.dash-card')) {
+  if (!sourceBody.querySelector('.dash-card')) {
     const empty = document.createElement('div');
     empty.className = 'dash-empty';
     empty.textContent = 'No cards';
-    sourceSection.appendChild(empty);
+    sourceBody.appendChild(empty);
   }
 
   // Update the count badges on both sections.
@@ -5979,6 +6017,27 @@ document.getElementById('modal-close').addEventListener('click', closeModal);
 document.addEventListener('click', () => {
   document.querySelectorAll('.board-edit-popover.visible').forEach(p => p.classList.remove('visible'));
 });
+
+// ── Capped-section scroll fade ─────────────────────────────────────
+// Drop the bottom fade-mask once the user has scrolled to the bottom, so
+// the last card isn't permanently dimmed. Applies to:
+//  - Done column on Kanban (.column-cards inside .board-column[data-list="done"])
+//  - Someday section on Dashboard (.dash-section.someday > .dash-section-body)
+document.addEventListener('scroll', (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLElement)) return;
+  let qualifies = false;
+  if (el.classList.contains('column-cards')) {
+    const col = el.closest('.board-column');
+    qualifies = !!col && col.dataset.list === 'done';
+  } else if (el.classList.contains('dash-section-body')) {
+    const sec = el.closest('.dash-section');
+    qualifies = !!sec && sec.classList.contains('someday');
+  }
+  if (!qualifies) return;
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+  el.classList.toggle('at-bottom', atBottom);
+}, true);
 
 // ── Floating-modal drag, position memory, stacking ────────────────
 // Applies to .modal-floating overlays only. The card and settings modals
