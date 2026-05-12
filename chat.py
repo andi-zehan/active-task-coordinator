@@ -90,8 +90,13 @@ def _block_to_dict(block) -> dict:
 
 
 def chat_stream(messages: list, *, model: str, client,
-                max_turns: int = MAX_TOOL_TURNS):
+                max_turns: int = MAX_TOOL_TURNS,
+                system_prompt: str | None = None):
     """Run a tool-use loop on top of the given conversation history.
+
+    `system_prompt` overrides the default chat SYSTEM_PROMPT — the contextual
+    Ask flow uses this to swap in its own pinned-context prompt while reusing
+    the same loop, tools, and SSE event shape.
 
     Yields events. Event shapes (all dicts have a 'type' key):
       {"type": "started"}
@@ -112,6 +117,7 @@ def chat_stream(messages: list, *, model: str, client,
     proposed_ops: list[dict] = []
     msgs = list(messages)
     appended: list[dict] = []
+    sys_text = system_prompt if system_prompt is not None else SYSTEM_PROMPT
 
     for turn in range(1, max_turns + 1):
         yield {"type": "turn", "n": turn}
@@ -121,7 +127,7 @@ def chat_stream(messages: list, *, model: str, client,
             max_tokens=4096,
             tools=CHAT_TOOLS,
             system=[
-                {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": sys_text, "cache_control": {"type": "ephemeral"}},
             ],
             messages=msgs,
         )

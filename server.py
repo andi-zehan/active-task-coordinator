@@ -652,6 +652,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         if path == '/api/briefing/apply' and method == 'POST':
             return self._handle_briefing_apply()
 
+        # /api/ask/{start,turn,apply}
+        if path == '/api/ask/start' and method == 'POST':
+            return self._handle_ask_start()
+        if path == '/api/ask/turn' and method == 'POST':
+            return self._handle_ask_turn()
+        if path == '/api/ask/apply' and method == 'POST':
+            return self._handle_ask_apply()
+
         # /api/notes/:id
         m = re.match(r'^/api/notes/([\w\-.]+)$', path)
         if m and method == 'GET':
@@ -1270,6 +1278,131 @@ class RequestHandler(BaseHTTPRequestHandler):
                 emit({"type": "error", "message": str(e)})
             except (BrokenPipeError, ConnectionResetError):
                 pass
+
+    def _handle_ask_start(self):
+        """Stream the first turn of a contextual Ask. The browser keeps the
+        full message history and replays it via /api/ask/turn for follow-ups."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        context = body.get('context')
+        question = (body.get('question') or '').strip()
+        if not isinstance(context, dict):
+            return self._send_error(400, 'context object required')
+        if not question:
+            return self._send_error(400, 'question is required')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        import ask
+        try:
+            payload = ask.build_context_payload(context)
+        except ValueError as e:
+            return self._send_error(400, str(e))
+        seed = ask.build_seed_message(payload, question)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        # Send the seed back to the client up front so it can store it as
+        # turn 1 of its own message history without rebuilding it.
+        try:
+            emit({"type": "seed", "message": seed})
+            import chat
+            for event in chat.chat_stream([seed], model=cfg['model'],
+                                          client=client,
+                                          system_prompt=ask.SYSTEM_PROMPT):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_ask_turn(self):
+        """Stream a follow-up turn. The browser supplies the running history."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        messages = body.get('messages', [])
+        question = (body.get('question') or '').strip()
+        if not isinstance(messages, list) or not messages:
+            return self._send_error(400, 'messages list required')
+        if not question:
+            return self._send_error(400, 'question is required')
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        msgs = list(messages) + [{
+            "role": "user",
+            "content": [{"type": "text", "text": question}],
+        }]
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            import ask, chat
+            for event in chat.chat_stream(msgs, model=cfg['model'],
+                                          client=client,
+                                          system_prompt=ask.SYSTEM_PROMPT):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_ask_apply(self):
+        """Apply queued ops from an Ask conversation. Same shape as
+        /api/notes/apply with note_id=None — reuses notes.apply_operations."""
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        operations = body.get('operations', [])
+        if not isinstance(operations, list):
+            return self._send_error(400, 'operations list required')
+        result = notes.apply_operations(operations, None)
+        self._send_json(result)
 
     def _handle_notes_apply(self):
         try:

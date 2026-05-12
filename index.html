@@ -826,6 +826,8 @@ a { color: #0052cc; text-decoration: none; }
 .dash-card .dash-due { font-size: 12px; color: #5e6c84; }
 .dash-card .dash-due.overdue { color: #e74c3c; font-weight: 600; }
 .dash-card .dash-list { font-size: 11px; color: #5e6c84; background: #f4f5f7; padding: 1px 6px; border-radius: 3px; }
+.dash-card .dash-assignee { font-size: 11px; color: #42526e; background: #deebff; padding: 1px 6px; border-radius: 3px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-card .dash-assignee.dash-assignee-empty { color: #97a0af; background: transparent; padding: 0; }
 .dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 6px; }
 .dash-card.dragging { opacity: 0.4; }
 .dash-card.card-settling { animation: cardSettle 0.25s ease-out; }
@@ -967,6 +969,36 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 .chat-ops-panel .chat-ops-apply { display: inline-flex; align-items: center; gap: 6px; }
 .chat-ops-panel .actions-row .spacer { flex: 1; }
+
+/* Ask transcript: user messages stay as chat bubbles; assistant turns get the
+   roomier briefing-card look so md-rendered prose (lists, tables, headings)
+   has the breathing room briefing already provides. */
+#ask-messages {
+  display: flex; flex-direction: column; gap: 14px;
+  overscroll-behavior: contain;   /* don't chain scroll into the kanban behind */
+}
+#ask-messages .chat-msg-user { max-width: 92%; }
+#ask-messages .chat-msg-assistant {
+  background: #fff;
+  border: 1px solid #dfe1e6;
+  border-radius: 6px;
+  padding: 12px 14px;
+  max-width: 100%;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: normal;            /* md owns its own whitespace */
+}
+/* Tighten the bubble's first/last children so md doesn't double-pad. */
+#ask-messages .ask-text > *:first-child { margin-top: 0; }
+#ask-messages .ask-text > *:last-child  { margin-bottom: 0; }
+/* Tool-call activity is secondary to the prose — push it down and dim it. */
+#ask-messages .chat-tools:not(:empty) {
+  margin: 8px 0 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed #ebecf0;
+  opacity: 0.75;
+}
+#ask-messages .chat-tools:not(:empty) + .ask-text { margin-top: 10px; }
 .chat-ops-panel .refine-form {
   margin-top: 8px;
   display: flex; flex-direction: column; gap: 6px;
@@ -1150,6 +1182,39 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 .modal-overlay.visible {
   display: flex;
+}
+/* Floating modal: no backdrop, draggable, doesn't block the board behind it. */
+.modal-overlay.modal-floating {
+  background: transparent;
+  pointer-events: none;
+  align-items: flex-start;
+  padding: 0;
+  overflow: visible;
+}
+.modal-overlay.modal-floating .modal {
+  pointer-events: auto;
+  position: absolute;
+}
+.modal-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 14px;
+  background: #f4f5f7;
+  border-bottom: 1px solid #ebecf0;
+  border-radius: 8px 8px 0 0;
+  cursor: move;
+  user-select: none;
+}
+.modal-drag-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #5e6c84;
+  letter-spacing: 0.02em;
+}
+.modal-floating .modal-close {
+  position: static;
+  margin: 0;
 }
 .modal {
   background: #fff;
@@ -1701,6 +1766,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
     <div class="search-dropdown" id="search-dropdown"></div>
   </div>
   <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
+  <button class="header-btn top-btn" id="btn-ask" disabled title="Configure API token in Settings">&#128172; Ask</button>
   <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
   <button class="header-btn top-btn" id="btn-briefing" disabled title="Configure API token in Settings">&#128202; Briefing</button>
   <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar" hidden>&#128172; Chat</button>
@@ -1854,9 +1920,12 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 
 <!-- ── Process Notes Modal ────────────────────────────────────── -->
-<div class="modal-overlay" id="notes-overlay">
-  <div class="modal modal-wide">
-    <button class="modal-close" id="notes-close">&times;</button>
+<div class="modal-overlay modal-floating" id="notes-overlay">
+  <div class="modal modal-wide" data-modal-id="notes">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">Process Notes</span>
+      <button class="modal-close" id="notes-close" title="Close">&times;</button>
+    </div>
     <div class="modal-body">
       <!-- Step 1 -->
       <div id="notes-step-1">
@@ -1907,9 +1976,12 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 
 <!-- ── AI Briefing Modal ──────────────────────────────────────── -->
-<div class="modal-overlay" id="briefing-overlay">
-  <div class="modal modal-wide">
-    <button class="modal-close" id="briefing-close">&times;</button>
+<div class="modal-overlay modal-floating" id="briefing-overlay">
+  <div class="modal modal-wide" data-modal-id="briefing">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">AI Briefing</span>
+      <button class="modal-close" id="briefing-close" title="Close">&times;</button>
+    </div>
     <div class="modal-body">
       <!-- Step 1 -->
       <div id="briefing-step-1">
@@ -1959,6 +2031,25 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <div id="briefing-result" style="font-size:13px;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
           <button id="btn-briefing-close-final" class="btn-new-card">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Contextual Ask Modal ───────────────────────────────────── -->
+<div class="modal-overlay modal-floating" id="ask-overlay">
+  <div class="modal modal-wide" data-modal-id="ask">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">Ask <span id="ask-context-label" style="color:#172b4d;font-weight:500;margin-left:6px;"></span></span>
+      <button class="modal-close" id="ask-close" title="Close">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;height:70vh;padding:0;">
+      <div id="ask-messages" style="flex:1;overflow-y:auto;padding:14px 18px;"></div>
+      <div style="border-top:1px solid #ebecf0;padding:10px 14px;background:#f4f5f7;">
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <textarea id="ask-input" rows="2" placeholder="Ask a question…" style="flex:1;font-family:inherit;font-size:13px;padding:6px 8px;border:1px solid #dfe1e6;border-radius:4px;resize:vertical;min-height:38px;box-sizing:border-box;"></textarea>
+          <button id="btn-ask-send" class="btn-new-card">Send</button>
         </div>
       </div>
     </div>
@@ -2591,7 +2682,7 @@ function switchView(view) {
     b.classList.toggle('active', b.dataset.view === view);
   });
   const filterBar = document.getElementById('filter-bar');
-  if (view === 'board' || view === 'table') {
+  if (view === 'board' || view === 'table' || view === 'dashboard') {
     filterBar.classList.add('visible');
   } else {
     filterBar.classList.remove('visible');
@@ -3119,13 +3210,23 @@ async function renderDashboard() {
   }
   container.innerHTML = '';
 
-  // Index all cards from all buckets
+  // Index all cards from all buckets BEFORE filtering — the global card index
+  // (used by [[C-N]] resolution etc.) should reflect everything on disk, not
+  // the current filter state.
   indexCards(data.overdue || []);
   indexCards(data.today || []);
   indexCards(data.this_week || []);
   indexCards(data.next_week || []);
   indexCards(data.later || []);
   indexCards(data.someday || []);
+
+  // Now narrow each bucket by the active filter bar (assignee / label / due).
+  data.overdue   = applyFilters(data.overdue   || []);
+  data.today     = applyFilters(data.today     || []);
+  data.this_week = applyFilters(data.this_week || []);
+  data.next_week = applyFilters(data.next_week || []);
+  data.later     = applyFilters(data.later     || []);
+  data.someday   = applyFilters(data.someday   || []);
 
   function groupByBoard(cards) {
     const groups = {};
@@ -3150,10 +3251,15 @@ async function renderDashboard() {
           const labels = Array.isArray(c.labels) ? c.labels : [];
           const labelDots = labels.map(l => `<div class="dash-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('');
           const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
+          const assignee = (c.assignee || '').trim();
+          const assigneeHtml = assignee
+            ? `<span class="dash-assignee" title="${escHtml(assignee)}">${escHtml(assignee)}</span>`
+            : '<span class="dash-assignee dash-assignee-empty" title="Unassigned">—</span>';
           html += `<div class="dash-card" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
             <div class="dash-labels">${labelDots}</div>
             <span class="dash-title">${escHtml(c.title)}</span>
             <span class="dash-list">${formatListName(c.list)}</span>
+            ${assigneeHtml}
             <span class="dash-due ${dueClass}">${formatDate(c.due)}</span>
           </div>`;
         }
@@ -3696,7 +3802,9 @@ function renderModal(card) {
     </div>
   </div>
   <div class="modal-footer">
-    <button class="modal-delete" id="delete-card-btn" title="Delete this card">&#128465; Delete card</button>
+    <button class="header-btn top-btn" id="delete-card-btn" title="Delete this card" style="color:#bf2600;">&#128465; Delete card</button>
+    <span style="flex:1;"></span>
+    <button class="header-btn top-btn" id="modal-ask-card" title="Ask the AI about this card">&#128172; Ask</button>
   </div>`;
 
   body.innerHTML = html;
@@ -4389,6 +4497,7 @@ async function refreshNotesButtonState() {
     if (notesBtn) notesBtn.disabled = true;
     if (briefingBtn) briefingBtn.disabled = true;
   }
+  if (typeof refreshAskButtonState === 'function') refreshAskButtonState();
 }
 
 /* ================================================================
@@ -4886,6 +4995,369 @@ document.getElementById('chat-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendChatMessage();
+  }
+});
+
+/* ================================================================
+   Contextual Ask — modal-based multi-turn dialog with pinned context
+   ================================================================ */
+const askState = {
+  context: null,           // {type:'view',view:...} | {type:'card',id:...}
+  contextLabel: '',        // human label for the modal subtitle
+  messages: [],            // Anthropic history (seeded by /api/ask/start)
+  pendingByTurn: {},       // turnIndex → list of unapplied ops
+  pendingApplyNote: '',    // prefix to prepend to next user message
+  inflight: false,
+  turnCounter: 0,
+  started: false,          // false until first /api/ask/start completes
+};
+
+function refreshAskButtonState() {
+  const askBtn = document.getElementById('btn-ask');
+  if (!askBtn) return;
+  // Mirror the gating used by Process Notes/Briefing — same /api/llm-config check.
+  const notesBtn = document.getElementById('btn-process-notes');
+  if (notesBtn) {
+    askBtn.disabled = notesBtn.disabled;
+    askBtn.title = notesBtn.disabled ? 'Configure API token in Settings'
+                                     : 'Ask the AI about this view';
+  }
+}
+
+function resetAskState(context, label) {
+  askState.context = context;
+  askState.contextLabel = label;
+  askState.messages = [];
+  askState.pendingByTurn = {};
+  askState.pendingApplyNote = '';
+  askState.inflight = false;
+  askState.turnCounter = 0;
+  askState.started = false;
+  document.getElementById('ask-messages').innerHTML = '';
+  document.getElementById('ask-context-label').textContent = label ? '— ' + label : '';
+  document.getElementById('ask-input').value = '';
+}
+
+function openAskModal(context, label) {
+  resetAskState(context, label);
+  document.getElementById('ask-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('ask-input').focus(), 0);
+}
+
+function closeAskModal() {
+  document.getElementById('ask-overlay').classList.remove('visible');
+}
+
+/* ---- Render helpers (mirror chat sidebar, but target #ask-messages) ---- */
+
+function _askScroll() {
+  const el = document.getElementById('ask-messages');
+  el.scrollTop = el.scrollHeight;
+}
+function askRenderUser(text) {
+  const el = document.createElement('div');
+  el.className = 'chat-msg-user';
+  el.textContent = text;
+  document.getElementById('ask-messages').appendChild(el);
+  _askScroll();
+}
+function askRenderAssistantBubble() {
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-msg-assistant';
+  // .ask-text is markdown-rendered (briefing-style), so it must NOT inherit
+  // the bubble's white-space:pre-wrap — we want native HTML formatting.
+  wrap.innerHTML = `
+    <div class="chat-status"><span class="spinner"></span><span class="chat-status-text">Thinking…</span></div>
+    <div class="chat-tools"></div>
+    <div class="ask-text md-body" style="white-space:normal;"></div>
+    <div class="chat-ops"></div>
+  `;
+  // Cumulative raw markdown for this bubble — re-rendered on each append so
+  // multi-paragraph blocks (lists, tables) format correctly even when the
+  // model emits them across multiple text chunks.
+  wrap._askMd = '';
+  document.getElementById('ask-messages').appendChild(wrap);
+  _askScroll();
+  return wrap;
+}
+function askSetStatus(bubble, text) {
+  const s = bubble.querySelector('.chat-status .chat-status-text');
+  if (s) s.textContent = text;
+}
+function askClearStatus(bubble) {
+  const s = bubble.querySelector('.chat-status');
+  if (s) s.remove();
+}
+function askAppendToolLine(bubble, name, args) {
+  const tools = bubble.querySelector('.chat-tools');
+  const line = document.createElement('div');
+  line.className = 'chat-tool-line';
+  const argsStr = Object.keys(args || {}).length ? ' ' + JSON.stringify(args) : '';
+  line.textContent = `→ ${name}${argsStr}`;
+  tools.appendChild(line);
+  _askScroll();
+  return line;
+}
+function askAppendToolResult(line, summary) {
+  if (line && summary) line.textContent += `  ${summary}`;
+}
+function askAppendText(bubble, text) {
+  const prose = bubble.querySelector('.ask-text');
+  bubble._askMd = bubble._askMd ? bubble._askMd + '\n\n' + text : text;
+  prose.innerHTML = mdToHtml(bubble._askMd);
+  _askScroll();
+}
+function askAppendError(bubble, message) {
+  const err = document.createElement('div');
+  err.className = 'chat-error';
+  err.textContent = message;
+  bubble.appendChild(err);
+  _askScroll();
+}
+
+/* ---- Per-turn ops panel (reuses renderOpRowHtml / collectSelectedOps) ---- */
+
+function askRenderOpsPanel(bubble, turnIndex) {
+  const ops = askState.pendingByTurn[turnIndex] || [];
+  let panel = bubble.querySelector('.chat-ops-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'chat-ops-panel';
+    panel.dataset.turnIndex = String(turnIndex);
+    panel.innerHTML = `
+      <div class="panel-title">Proposed changes (<span class="ask-ops-count">0</span>)</div>
+      <div class="ask-ops-rows"></div>
+      <div class="actions-row">
+        <span class="spacer"></span>
+        <button class="ask-ops-apply btn-new-card">Apply</button>
+      </div>
+    `;
+    bubble.querySelector('.chat-ops').appendChild(panel);
+    panel.querySelector('.ask-ops-apply').addEventListener('click', () => {
+      askApplyOpsForTurn(bubble, turnIndex);
+    });
+  }
+  panel.querySelector('.ask-ops-count').textContent = ops.length;
+  renderOpsRows(ops, panel.querySelector('.ask-ops-rows'));
+}
+
+async function askApplyOpsForTurn(bubble, turnIndex) {
+  const panel = bubble.querySelector('.chat-ops-panel');
+  if (!panel) return;
+  const allOps = askState.pendingByTurn[turnIndex] || [];
+  const selected = collectSelectedOps(panel.querySelector('.ask-ops-rows'), allOps);
+  if (!selected.length) return;
+
+  const applyBtn = panel.querySelector('.ask-ops-apply');
+  applyBtn.disabled = true;
+  applyBtn.innerHTML = '<span class="spinner" style="border-color:#fff5;border-top-color:#fff;"></span> Applying…';
+
+  let result;
+  try {
+    result = await api.post('/api/ask/apply', { operations: selected });
+  } catch (err) {
+    applyBtn.disabled = false;
+    applyBtn.textContent = 'Apply';
+    askAppendError(bubble, 'Apply failed: ' + err.message);
+    return;
+  }
+
+  const applied = result.applied || [];
+  const skipped = result.skipped || [];
+  panel.classList.add('applied');
+  panel.querySelector('.ask-ops-rows').innerHTML =
+    `<div style="font-size:12px;color:#172b4d;">✓ Applied ${applied.length} of ${selected.length}` +
+    (skipped.length ? ` — ${skipped.length} skipped` : '') + `</div>` +
+    (skipped.length ? `<ul style="font-size:12px;color:#bf2600;margin:4px 0 0 14px;">` +
+       skipped.map(s => `<li>${escHtml(s.op && s.op.op || '')}: ${escHtml(s.reason || '')}</li>`).join('') +
+       `</ul>` : '');
+  applyBtn.remove();
+
+  if (applied.length) {
+    const summaries = applied.map(a => describeAppliedOp(a)).join('; ');
+    const note = `(Applied: ${summaries})`;
+    askState.pendingApplyNote = askState.pendingApplyNote
+      ? askState.pendingApplyNote + ' ' + note : note;
+  }
+  delete askState.pendingByTurn[turnIndex];
+  if (typeof refreshCurrentView === 'function') refreshCurrentView();
+  // If a card modal is open behind the Ask modal, reload it from disk so any
+  // applied add_comment / tick_checklist / rename / etc. is reflected.
+  // `applied` carries each op's new target as "board/list/id" — we mine that
+  // for move_card hits on the open card so we can fetch from the new location
+  // instead of the stale (board, list) the modal was opened with.
+  await refreshOpenCardIfAny(applied);
+}
+
+async function refreshOpenCardIfAny(applied) {
+  const card = state.modalCard;
+  if (!card || !card.board || !card.list || !card.slug) return;
+
+  let board = card.board, list = card.list, slug = card.slug;
+
+  // If the open card was moved by one of the applied ops, follow the move.
+  // target shape is "board/list/id"; for an id-based card slug equals id.
+  if (Array.isArray(applied)) {
+    for (const a of applied) {
+      if (a.op !== 'move_card' || !a.target) continue;
+      const parts = a.target.split('/');
+      if (parts.length !== 3) continue;
+      const [tBoard, tList, tId] = parts;
+      if (tId === card.id || tId === card.slug) {
+        board = tBoard; list = tList; slug = tId;
+      }
+    }
+  }
+
+  try {
+    const fresh = await api.get(`/api/cards/${board}/${list}/${slug}`);
+    state.modalCard = fresh;
+    renderModal(fresh);
+  } catch {
+    // Card may have been deleted by the op — leave the stale modal in place;
+    // user can close it manually.
+  }
+}
+
+/* ---- SSE streaming (start = first turn, turn = follow-ups) ---- */
+
+async function _streamAskSSE(url, payload, onEvent) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    let detail = '';
+    try { const j = await r.json(); detail = j.error || ''; } catch {}
+    throw new Error(detail || `${url}: ${r.status}`);
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let last = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const dataLines = block.split('\n')
+        .filter(l => l.startsWith('data:')).map(l => l.slice(5).trimStart());
+      if (!dataLines.length) continue;
+      let parsed;
+      try { parsed = JSON.parse(dataLines.join('\n')); } catch { continue; }
+      onEvent(parsed);
+      if (parsed.type === 'done') last = parsed;
+      if (parsed.type === 'error') throw new Error(parsed.message || 'ask error');
+    }
+  }
+  return last;
+}
+
+async function askSendMessage(opts) {
+  if (askState.inflight) return;
+  const inputEl = document.getElementById('ask-input');
+  const sendBtn = document.getElementById('btn-ask-send');
+  const text = (opts && opts.displayText !== undefined) ? opts.displayText : inputEl.value.trim();
+  if (!text) return;
+
+  let outgoing = (opts && opts.outgoingText !== undefined) ? opts.outgoingText : text;
+  if (askState.pendingApplyNote) {
+    outgoing = askState.pendingApplyNote.trim() + '\n\n' + outgoing;
+    askState.pendingApplyNote = '';
+  }
+
+  askState.turnCounter += 1;
+  const turnIndex = askState.turnCounter;
+
+  askRenderUser(text);
+  inputEl.value = '';
+  const bubble = askRenderAssistantBubble();
+  bubble.dataset.turnIndex = String(turnIndex);
+  askState.inflight = true;
+  sendBtn.disabled = true;
+
+  let lastToolLine = null;
+  const onEvent = (ev) => {
+    switch (ev.type) {
+      case 'seed':
+        // First turn only: server hands us the seeded user message so we can
+        // mirror its history client-side without rebuilding the snapshot.
+        askState.messages.push(ev.message);
+        break;
+      case 'started':  askSetStatus(bubble, 'Working…'); break;
+      case 'turn':     askSetStatus(bubble, `Turn ${ev.n}…`); break;
+      case 'tool':     lastToolLine = askAppendToolLine(bubble, ev.name, ev.args); break;
+      case 'result':   askAppendToolResult(lastToolLine, ev.summary); break;
+      case 'queued':
+        if (!askState.pendingByTurn[turnIndex]) askState.pendingByTurn[turnIndex] = [];
+        askState.pendingByTurn[turnIndex].push({ op: ev.op, ...(ev.args || {}) });
+        askRenderOpsPanel(bubble, turnIndex);
+        break;
+      case 'text':     askAppendText(bubble, ev.text); break;
+      case 'done':     askClearStatus(bubble); break;
+    }
+  };
+
+  try {
+    let done;
+    if (!askState.started) {
+      // First turn: start endpoint takes context + question.
+      done = await _streamAskSSE('/api/ask/start',
+        { context: askState.context, question: outgoing }, onEvent);
+      askState.started = true;
+    } else {
+      // Follow-up: replay the running history + new question.
+      done = await _streamAskSSE('/api/ask/turn',
+        { messages: askState.messages, question: outgoing }, onEvent);
+      // The user message wasn't seeded by the server this time — append it
+      // here so future turns include it.
+      askState.messages.push({ role: 'user', content: outgoing });
+    }
+    if (done && Array.isArray(done.messages_appended)) {
+      askState.messages.push(...done.messages_appended);
+    }
+  } catch (err) {
+    askAppendError(bubble, err.message);
+  } finally {
+    askState.inflight = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+/* ---- Triggers ---- */
+
+document.getElementById('btn-ask').addEventListener('click', () => {
+  const view = state.currentView || 'board';
+  const viewLabel = view === 'board' ? 'Kanban' :
+                    view === 'dashboard' ? 'Dashboard' :
+                    view === 'calendar' ? 'Calendar' :
+                    view === 'table' ? 'Table' : view;
+  openAskModal({ type: 'view', view: viewLabel },
+               `about ${viewLabel} view`);
+});
+
+document.getElementById('ask-close').addEventListener('click', closeAskModal);
+document.getElementById('btn-ask-send').addEventListener('click', () => askSendMessage());
+document.getElementById('ask-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    askSendMessage();
+  }
+});
+
+// Card-modal Ask button is rendered inside renderModal; bind via delegation
+// so it works each time the card modal re-renders.
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'modal-ask-card') {
+    const card = state.modalCard;
+    if (!card || !card.id) return;
+    openAskModal({ type: 'card', id: card.id },
+                 `about ${card.id}: ${card.title || ''}`);
   }
 });
 
@@ -5508,20 +5980,147 @@ document.addEventListener('click', () => {
   document.querySelectorAll('.board-edit-popover.visible').forEach(p => p.classList.remove('visible'));
 });
 
+// ── Floating-modal drag, position memory, stacking ────────────────
+// Applies to .modal-floating overlays only. The card and settings modals
+// keep their backdrop-blocking behavior.
+const FloatingModals = (() => {
+  const POS_PREFIX = 'modal-pos:';
+  const BASE_Z = 600;
+  let zCounter = BASE_Z;
+  const openOrder = [];   // stack of overlay ids; topmost is last
+
+  function modalEl(overlay) { return overlay.querySelector('.modal'); }
+  function modalId(overlay) { return modalEl(overlay).dataset.modalId || overlay.id; }
+
+  function loadPos(id) {
+    try { return JSON.parse(localStorage.getItem(POS_PREFIX + id) || 'null'); }
+    catch (_) { return null; }
+  }
+  function savePos(id, pos) {
+    try { localStorage.setItem(POS_PREFIX + id, JSON.stringify(pos)); } catch (_) {}
+  }
+
+  function clamp(pos, el) {
+    const margin = 8;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    const maxLeft = Math.max(margin, window.innerWidth  - w - margin);
+    const maxTop  = Math.max(margin, window.innerHeight - h - margin);
+    return {
+      left: Math.min(Math.max(margin, pos.left), maxLeft),
+      top:  Math.min(Math.max(margin, pos.top),  maxTop),
+    };
+  }
+
+  function place(overlay) {
+    const m = modalEl(overlay);
+    const id = modalId(overlay);
+    let pos = loadPos(id);
+    if (!pos) {
+      // Default: roughly centered, with a stagger per stack depth.
+      const idx = openOrder.length;   // before push
+      const stagger = 24 * idx;
+      pos = {
+        left: Math.max(20, (window.innerWidth  - m.offsetWidth)  / 2) + stagger,
+        top:  Math.max(20, (window.innerHeight - m.offsetHeight) / 6) + stagger,
+      };
+    }
+    pos = clamp(pos, m);
+    m.style.left = pos.left + 'px';
+    m.style.top  = pos.top  + 'px';
+  }
+
+  function bringToFront(overlay) {
+    zCounter += 1;
+    overlay.style.zIndex = zCounter;
+    const id = overlay.id;
+    const i = openOrder.indexOf(id);
+    if (i !== -1) openOrder.splice(i, 1);
+    openOrder.push(id);
+  }
+
+  function attach(overlay) {
+    if (overlay.dataset.floatingInit) return;
+    overlay.dataset.floatingInit = '1';
+
+    const m = modalEl(overlay);
+    const handle = m.querySelector('.modal-drag-handle');
+    if (!handle) return;
+
+    // Bring to front on any mousedown inside the modal.
+    m.addEventListener('mousedown', () => bringToFront(overlay));
+
+    let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    handle.addEventListener('mousedown', (e) => {
+      // Don't drag when the close button (or other interactive child) is clicked.
+      if (e.target.closest('button, input, textarea, select, a')) return;
+      dragging = true;
+      startX = e.clientX; startY = e.clientY;
+      startLeft = m.offsetLeft; startTop = m.offsetTop;
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const pos = clamp({ left: startLeft + (e.clientX - startX),
+                          top:  startTop  + (e.clientY - startY) }, m);
+      m.style.left = pos.left + 'px';
+      m.style.top  = pos.top  + 'px';
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = '';
+      savePos(modalId(overlay), { left: m.offsetLeft, top: m.offsetTop });
+    });
+  }
+
+  // Watch class changes so we hook into the existing `.add('visible')` calls
+  // without rewriting every open/close site.
+  function observe(overlay) {
+    attach(overlay);
+    const obs = new MutationObserver(() => {
+      const visible = overlay.classList.contains('visible');
+      if (visible) {
+        if (!openOrder.includes(overlay.id)) {
+          place(overlay);
+          bringToFront(overlay);
+        }
+      } else {
+        const i = openOrder.indexOf(overlay.id);
+        if (i !== -1) openOrder.splice(i, 1);
+      }
+    });
+    obs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  function topmost() {
+    return openOrder.length ? document.getElementById(openOrder[openOrder.length - 1]) : null;
+  }
+
+  function init() {
+    document.querySelectorAll('.modal-overlay.modal-floating').forEach(observe);
+  }
+
+  return { init, topmost };
+})();
+FloatingModals.init();
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   const isInput = tag === 'input' || tag === 'textarea' || tag === 'select';
 
   if (e.key === 'Escape') {
+    // Floating modals stack; only the topmost reacts to Esc.
+    const topFloating = FloatingModals.topmost();
+    if (topFloating) {
+      topFloating.classList.remove('visible');
+      return;
+    }
     if (document.getElementById('modal-overlay').classList.contains('visible')) {
       closeModal();
     } else if (document.getElementById('settings-overlay').classList.contains('visible')) {
       closeSettings();
-    } else if (document.getElementById('notes-overlay') && document.getElementById('notes-overlay').classList.contains('visible')) {
-      document.getElementById('notes-overlay').classList.remove('visible');
-    } else if (document.getElementById('briefing-overlay') && document.getElementById('briefing-overlay').classList.contains('visible')) {
-      document.getElementById('briefing-overlay').classList.remove('visible');
     } else if (searchDropdown.classList.contains('visible')) {
       searchDropdown.classList.remove('visible');
       searchInput.value = '';
