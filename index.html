@@ -1225,7 +1225,17 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 .modal-overlay.modal-floating .modal {
   pointer-events: auto;
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 16px);
 }
+.modal-overlay.modal-floating .modal-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.modal-overlay.modal-floating .modal[data-modal-id="new-card"] { width: 420px; }
+.modal-overlay.modal-floating .modal[data-modal-id="settings"] { width: 480px; }
 .modal-drag-handle {
   display: flex;
   align-items: center;
@@ -1270,7 +1280,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 .modal-close:hover { background: #f4f5f7; color: #172b4d; }
 .modal-saved {
-  position: absolute; top: 12px; right: 48px;
   font-size: 12px; color: #27ae60; font-weight: 600;
   opacity: 0; transition: opacity 0.2s;
 }
@@ -1850,11 +1859,13 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </aside>
 
 <!-- ── New Card Dialog ────────────────────────────────────────── -->
-<div class="modal-overlay" id="new-card-overlay">
-  <div class="modal" style="max-width:420px;">
-    <button class="modal-close" id="new-card-close">&times;</button>
-    <div class="modal-body" style="padding:20px 24px 24px;">
-      <h2 style="font-size:18px;margin-bottom:16px;">New Card</h2>
+<div class="modal-overlay modal-floating" id="new-card-overlay">
+  <div class="modal" data-modal-id="new-card">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">New Card</span>
+      <button class="modal-close" id="new-card-close" title="Close">&times;</button>
+    </div>
+    <div class="modal-body">
       <div style="margin-bottom:12px;">
         <label class="field-label">Title</label>
         <input type="text" id="nc-title" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;" placeholder="Card title..." autofocus />
@@ -1884,9 +1895,12 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 
 <!-- ── Settings Modal ─────────────────────────────────────────── -->
-<div class="modal-overlay" id="settings-overlay">
-  <div class="modal" style="max-width:480px;">
-    <button class="modal-close" id="settings-close">&times;</button>
+<div class="modal-overlay modal-floating" id="settings-overlay">
+  <div class="modal" data-modal-id="settings">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">Settings</span>
+      <button class="modal-close" id="settings-close" title="Close">&times;</button>
+    </div>
     <div class="modal-body">
       <h2 style="margin-top:0;">Data folder</h2>
       <div style="margin-bottom:12px;">
@@ -2088,10 +2102,15 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 
 <!-- ── Card Detail Modal ──────────────────────────────────────── -->
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal" id="modal">
-    <span class="modal-saved" id="modal-saved">Saved</span>
-    <button class="modal-close" id="modal-close">&times;</button>
+<div class="modal-overlay modal-floating" id="modal-overlay">
+  <div class="modal" id="modal" data-modal-id="card">
+    <div class="modal-drag-handle">
+      <span class="modal-drag-title">Card</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="modal-saved" id="modal-saved">Saved</span>
+        <button class="modal-close" id="modal-close" title="Close">&times;</button>
+      </div>
+    </div>
     <div class="modal-body" id="modal-body"></div>
   </div>
 </div>
@@ -3695,7 +3714,12 @@ async function openCardModal(board, list, cardSlug) {
   }
   state.modalCard = card;
   renderModal(card);
-  document.getElementById('modal-overlay').classList.add('visible');
+  const overlay = document.getElementById('modal-overlay');
+  const wasVisible = overlay.classList.contains('visible');
+  overlay.classList.add('visible');
+  // If the modal was already open (user clicked a second card), the height
+  // just changed — re-clamp so dragging doesn't snap the modal inside view.
+  if (wasVisible) FloatingModals.reclamp(overlay);
 }
 
 function closeModal() {
@@ -4369,10 +4393,6 @@ document.getElementById('nc-board').addEventListener('change', (e) => {
 
 document.getElementById('new-card-close').addEventListener('click', () => {
   document.getElementById('new-card-overlay').classList.remove('visible');
-});
-document.getElementById('new-card-overlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('new-card-overlay'))
-    document.getElementById('new-card-overlay').classList.remove('visible');
 });
 
 document.getElementById('nc-submit').addEventListener('click', async () => {
@@ -6008,9 +6028,7 @@ document.getElementById('btn-briefing-apply').addEventListener('click', async ()
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
 });
 
-// Modal close — only via the explicit X (or Escape). Clicking the backdrop
-// does NOT close: too easy to lose an in-flight comment, label, or checklist
-// edit by missing the modal edge.
+// Card Detail close — explicit X or Escape. (Floating modal: no backdrop.)
 document.getElementById('modal-close').addEventListener('click', closeModal);
 
 // Close board edit popovers on outside click
@@ -6060,12 +6078,19 @@ const FloatingModals = (() => {
   }
 
   function clamp(pos, el) {
+    // Only the drag handle has to stay reachable. Bottom may go off-screen
+    // (modal-body scrolls internally); horizontally we keep at least
+    // GRAB_PX of the handle visible so it can be grabbed back.
     const margin = 8;
-    const w = el.offsetWidth, h = el.offsetHeight;
-    const maxLeft = Math.max(margin, window.innerWidth  - w - margin);
-    const maxTop  = Math.max(margin, window.innerHeight - h - margin);
+    const GRAB_PX = 120;
+    const w = el.offsetWidth;
+    const handle = el.querySelector('.modal-drag-handle');
+    const handleH = handle ? handle.offsetHeight : 32;
+    const minLeft = -(w - GRAB_PX);
+    const maxLeft = window.innerWidth - GRAB_PX;
+    const maxTop  = Math.max(margin, window.innerHeight - handleH - margin);
     return {
-      left: Math.min(Math.max(margin, pos.left), maxLeft),
+      left: Math.min(Math.max(minLeft, pos.left), maxLeft),
       top:  Math.min(Math.max(margin, pos.top),  maxTop),
     };
   }
@@ -6156,13 +6181,39 @@ const FloatingModals = (() => {
     return openOrder.length ? document.getElementById(openOrder[openOrder.length - 1]) : null;
   }
 
+  // Per-overlay close callbacks. Default just toggles visibility off; modals
+  // that need extra teardown (e.g. Card Detail clearing state.modalCard) can
+  // register their own.
+  const closers = {};
+  function registerCloser(overlayId, fn) { closers[overlayId] = fn; }
+  function closeOverlay(overlay) {
+    if (!overlay) return;
+    const fn = closers[overlay.id];
+    if (fn) fn(); else overlay.classList.remove('visible');
+  }
+
+  // Re-clamp an open modal to the viewport. Call after swapping content into
+  // an already-visible modal so a now-taller body doesn't cause a jump on the
+  // first drag.
+  function reclamp(overlay) {
+    if (!overlay || !overlay.classList.contains('visible')) return;
+    const m = modalEl(overlay);
+    const pos = clamp({ left: m.offsetLeft, top: m.offsetTop }, m);
+    m.style.left = pos.left + 'px';
+    m.style.top  = pos.top  + 'px';
+  }
+
   function init() {
     document.querySelectorAll('.modal-overlay.modal-floating').forEach(observe);
   }
 
-  return { init, topmost };
+  return { init, topmost, registerCloser, closeOverlay, reclamp };
 })();
 FloatingModals.init();
+// Card Detail and Settings need their dedicated close functions so internal
+// state (state.modalCard, settings dirty flag) is reset alongside the visibility flip.
+FloatingModals.registerCloser('modal-overlay', () => closeModal());
+FloatingModals.registerCloser('settings-overlay', () => closeSettings());
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
@@ -6173,14 +6224,10 @@ document.addEventListener('keydown', (e) => {
     // Floating modals stack; only the topmost reacts to Esc.
     const topFloating = FloatingModals.topmost();
     if (topFloating) {
-      topFloating.classList.remove('visible');
+      FloatingModals.closeOverlay(topFloating);
       return;
     }
-    if (document.getElementById('modal-overlay').classList.contains('visible')) {
-      closeModal();
-    } else if (document.getElementById('settings-overlay').classList.contains('visible')) {
-      closeSettings();
-    } else if (searchDropdown.classList.contains('visible')) {
+    if (searchDropdown.classList.contains('visible')) {
       searchDropdown.classList.remove('visible');
       searchInput.value = '';
       searchInput.blur();
