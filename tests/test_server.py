@@ -181,13 +181,37 @@ class TestIdIndex(unittest.TestCase):
         self.assertIsNone(server.resolve_id("C-99"))
 
     def test_register_id_updates_index(self):
+        # resolve_id verifies the file exists at the cached location, so we
+        # must write the card before registering — matching how every real
+        # code path uses register_id (after write_card / shutil.move).
+        self._write_card_with_id("x", "ideas", "C-42", "C-42")
         server.register_id("C-42", "x", "ideas")
         self.assertEqual(server.resolve_id("C-42"), ("x", "ideas"))
 
     def test_unregister_id_removes_from_index(self):
+        self._write_card_with_id("x", "ideas", "C-42", "C-42")
         server.register_id("C-42", "x", "ideas")
+        # Unregister + delete on disk together — matches every real call site
+        # (delete_card, archive). resolve_id rescans on a miss, so leaving the
+        # file would just re-populate the index.
         server.unregister_id("C-42")
+        (server.DATA_DIR / "boards" / "x" / "ideas" / "C-42.md").unlink()
         self.assertIsNone(server.resolve_id("C-42"))
+
+    def test_resolve_id_rescans_when_file_missing(self):
+        # The bug this guards against: an LLM tool turn cached a card's
+        # location, then a separate flow moved the card. The cached entry
+        # points at the old path; resolve_id must notice and rescan.
+        self._write_card_with_id("b", "backlog", "C-9", "C-9")
+        server.reset_id_index()
+        self.assertEqual(server.resolve_id("C-9"), ("b", "backlog"))
+        # Move the file on disk WITHOUT going through register_id, simulating
+        # the index-vs-disk drift.
+        src = server.DATA_DIR / "boards" / "b" / "backlog" / "C-9.md"
+        dst_dir = server.DATA_DIR / "boards" / "b" / "in-progress"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        src.rename(dst_dir / "C-9.md")
+        self.assertEqual(server.resolve_id("C-9"), ("b", "in-progress"))
 
 
 class TestBidirectionalRelations(unittest.TestCase):

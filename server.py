@@ -157,17 +157,19 @@ def next_id() -> str:
 def resolve_id(card_id: str) -> tuple[str, str] | None:
     """Return (board, list) for the given id, or None if unknown.
 
-    On a miss, rescan the data dir once and retry — the in-memory index can
-    drift from disk when cards are added/moved outside the server (git pull,
-    external editor, migration script). One miss = one full rescan, cheap
-    relative to the alternative of restarting the process.
+    Verifies the file actually exists at the cached location; on a miss OR
+    a stale hit (file moved/deleted out from under us), rescan once and
+    retry. Drift sources: git pull, external editor, migration script, or
+    an LLM tool turn that read its location before another flow moved it.
     """
     global _ID_INDEX, _NEXT_ID_COUNTER
     with _ID_LOCK:
         _ensure_id_index()
         hit = _ID_INDEX.get(card_id)
         if hit is not None:
-            return hit
+            board, list_slug = hit
+            if (DATA_DIR / "boards" / board / list_slug / f"{card_id}.md").exists():
+                return hit
         _ID_INDEX, _NEXT_ID_COUNTER = _scan_id_index()
         return _ID_INDEX.get(card_id)
 

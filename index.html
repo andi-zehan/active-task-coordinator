@@ -250,6 +250,19 @@ a { color: #0052cc; text-decoration: none; }
 .header-btn:hover { background: #ebecf0; color: #172b4d; }
 .header-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .header-btn[disabled]:hover { background: #f4f5f7; color: #5e6c84; }
+.header-btn.icon-btn {
+  min-width: 0;
+  padding: 6px 8px;
+  line-height: 0;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.header-btn.icon-btn + .header-btn.icon-btn { margin-left: 2px; }
+.header-btn.icon-btn svg { display: block; pointer-events: none; }
+.header-btn.icon-btn[disabled],
+.header-btn.icon-btn[disabled]:hover { cursor: default !important; }
 .modal.modal-wide { width: min(var(--modal-w), 92vw); max-width: 92vw; }
 .md-body h1, .md-body h2, .md-body h3, .md-body h4 { margin: 14px 0 6px 0; line-height: 1.25; color: #172b4d; }
 .md-body h1 { font-size: 20px; }
@@ -1801,6 +1814,12 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
     <button data-view="table">Table</button>
   </div>
   <div class="spacer"></div>
+  <button class="header-btn icon-btn" id="btn-undo" disabled aria-label="Undo">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h6a3 3 0 0 1 0 6H6"/><path d="M6 4 3 7l3 3"/></svg>
+  </button>
+  <button class="header-btn icon-btn" id="btn-redo" disabled aria-label="Redo">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7H6a3 3 0 0 0 0 6h4"/><path d="M10 4l3 3-3 3"/></svg>
+  </button>
   <div class="search-wrapper">
     <input type="text" id="search-input" placeholder="Search cards... ( / )">
     <div class="search-dropdown" id="search-dropdown"></div>
@@ -2145,6 +2164,12 @@ const state = {
   sortColumn: 'title',
   sortAsc: true,
   idIndex: new Map(),  // id -> {title, board, list}
+  // Move-undo history. Each entry is { forward, reverse, label } where
+  // forward/reverse are arrays of move descriptors (see applyDescriptor).
+  // historyIndex points at the most recently applied entry; -1 = nothing to undo.
+  history: [],
+  historyIndex: -1,
+  HISTORY_MAX: 10,
 };
 
 /* ================================================================
@@ -2722,6 +2747,131 @@ function applyFilters(cards) {
 }
 
 /* ================================================================
+   Move-undo history
+   Records card moves (kanban drag, timeline drag, agent batches) so
+   Ctrl+Z reverses the last one. Stack lives in memory only.
+   ================================================================ */
+function pushHistoryEntry(entry) {
+  // Drop any redo tail past the current index.
+  state.history.length = state.historyIndex + 1;
+  state.history.push(entry);
+  state.historyIndex = state.history.length - 1;
+  while (state.history.length > state.HISTORY_MAX) {
+    state.history.shift();
+    state.historyIndex--;
+  }
+  updateUndoButtons();
+}
+
+// Show/hide and enable/disable the undo/redo buttons. Visible only on
+// Kanban + Timeline (the views that produce undoable moves).
+function updateUndoButtons() {
+  const undoBtn = document.getElementById('btn-undo');
+  const redoBtn = document.getElementById('btn-redo');
+  if (!undoBtn || !redoBtn) return;
+  const visible = state.currentView === 'board' || state.currentView === 'dashboard';
+  undoBtn.style.display = visible ? '' : 'none';
+  redoBtn.style.display = visible ? '' : 'none';
+  if (!visible) return;
+  undoBtn.disabled = state.historyIndex < 0;
+  redoBtn.disabled = state.historyIndex >= state.history.length - 1;
+}
+
+async function applyDescriptor(d) {
+  try {
+    if (d.type === 'kanban-move') {
+      await api.put(`/api/cards/${d.board}/${d.list}/${d.card}/move`, {
+        target_list: d.target_list,
+        target_board: d.target_board,
+        position: d.position,
+      });
+    } else if (d.type === 'timeline-move') {
+      await api.put(`/api/cards/${d.board}/${d.list}/${d.card}`, { due: d.due });
+    } else if (d.type === 'agent-move') {
+      await api.put(`/api/cards/${d.board}/${d.list}/${d.card}/move`, {
+        target_list: d.target_list,
+        target_board: d.board,
+        position: -1,
+      });
+    } else {
+      throw new Error('unknown descriptor type: ' + d.type);
+    }
+  } catch (err) {
+    console.error('Undo/Redo descriptor failed:', d, err);
+    throw new Error(`${d.type} ${d.card} → ${d.target_list || d.due || '?'}: ${err.message}`);
+  }
+}
+
+async function undo() {
+  if (state.historyIndex < 0) return;
+  const entry = state.history[state.historyIndex];
+  state.historyIndex--;
+  updateUndoButtons();
+  try {
+    for (const d of entry.reverse) await applyDescriptor(d);
+  } catch (err) {
+    alert('Undo failed: ' + err.message);
+  }
+  await refreshCurrentView();
+}
+
+async function redo() {
+  if (state.historyIndex >= state.history.length - 1) return;
+  state.historyIndex++;
+  updateUndoButtons();
+  const entry = state.history[state.historyIndex];
+  try {
+    for (const d of entry.forward) await applyDescriptor(d);
+  } catch (err) {
+    alert('Redo failed: ' + err.message);
+  }
+  await refreshCurrentView();
+}
+
+// Snapshot move_card ops in a queued batch BEFORE the agent apply call,
+// then push one history entry once the apply succeeds. Only ops the server
+// actually executed (present in result.applied) are recorded.
+function recordAgentMovesFromApply(selected, result) {
+  const moveOps = (selected || []).filter(o => o && o.op === 'move_card');
+  if (!moveOps.length) return;
+  // Build {id -> { board, list }} from the server's applied[] — the target
+  // string ("board/list/card-id") is the authoritative POST-move location.
+  const afterById = new Map();
+  for (const a of (result && result.applied) || []) {
+    if (!a || a.op !== 'move_card' || !a.target) continue;
+    const parts = a.target.split('/');
+    if (parts.length !== 3) continue;
+    afterById.set(parts[2], { board: parts[0], list: parts[1] });
+  }
+  const snapshots = [];
+  for (const o of moveOps) {
+    if (!o.id || !o.target_list) continue;
+    const after = afterById.get(o.id);
+    if (!after) continue;  // server skipped this op
+    const before = state.idIndex.get(o.id);
+    if (!before || !before.board || !before.list) continue;
+    if (before.board === after.board && before.list === after.list) continue;
+    snapshots.push({
+      card: o.id,
+      beforeBoard: before.board, beforeList: before.list,
+      afterBoard: after.board, afterList: after.list,
+    });
+  }
+  if (!snapshots.length) return;
+  pushHistoryEntry({
+    forward: snapshots.map(s => ({
+      type: 'agent-move', card: s.card,
+      board: s.beforeBoard, list: s.beforeList, target_list: s.afterList,
+    })),
+    reverse: snapshots.map(s => ({
+      type: 'agent-move', card: s.card,
+      board: s.afterBoard, list: s.afterList, target_list: s.beforeList,
+    })),
+    label: `agent moved ${snapshots.length} card${snapshots.length === 1 ? '' : 's'}`,
+  });
+}
+
+/* ================================================================
    View Switching
    ================================================================ */
 function switchView(view) {
@@ -2738,6 +2888,7 @@ function switchView(view) {
     filterBar.classList.remove('visible');
   }
   document.getElementById('lane-sidebar').style.display = (view === 'board') ? '' : 'none';
+  updateUndoButtons();
   refreshCurrentView();
 }
 
@@ -3217,8 +3368,14 @@ function setupDropZone(cardsContainer) {
     }
 
     const draggedCard = document.querySelector(`.card[data-card="${dragData.card}"][data-board="${dragData.board}"]`);
+    // Snapshot source position BEFORE we mutate the DOM, so undo can restore
+    // the card to its exact prior slot (not just the end of the source list).
+    let srcPosition = -1;
     if (draggedCard) {
       const sourceContainer = draggedCard.closest('.column-cards');
+      if (sourceContainer) {
+        srcPosition = [...sourceContainer.querySelectorAll('.card')].indexOf(draggedCard);
+      }
       draggedCard.classList.remove('dragging');
       draggedCard.dataset.board = targetBoard;
       const addBtn = cardsContainer.querySelector('.column-add-card');
@@ -3239,6 +3396,27 @@ function setupDropZone(cardsContainer) {
         target_board: targetBoard,
         position: position,
       });
+      const sameSlot =
+        dragData.board === targetBoard &&
+        dragData.list === targetList &&
+        srcPosition === position;
+      if (!sameSlot) {
+        pushHistoryEntry({
+          forward: [{
+            type: 'kanban-move', card: dragData.card,
+            board: dragData.board, list: dragData.list,
+            target_board: targetBoard, target_list: targetList,
+            position: position,
+          }],
+          reverse: [{
+            type: 'kanban-move', card: dragData.card,
+            board: targetBoard, list: targetList,
+            target_board: dragData.board, target_list: dragData.list,
+            position: srcPosition,
+          }],
+          label: `move ${dragData.card}`,
+        });
+      }
     } catch (err) {
       console.error('Move failed:', err);
       await renderBoard();
@@ -3306,7 +3484,7 @@ async function renderDashboard() {
           const assigneeHtml = assignee
             ? `<span class="dash-assignee" title="${escHtml(assignee)}">${escHtml(assignee)}</span>`
             : '<span class="dash-assignee dash-assignee-empty" title="Unassigned">—</span>';
-          html += `<div class="dash-card" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
+          html += `<div class="dash-card" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}" data-due="${escHtml(c.due || '')}">
             <div class="dash-labels">${labelDots}</div>
             <span class="dash-title">${escHtml(c.title)}</span>
             <span class="dash-list">${formatListName(c.list)}</span>
@@ -3382,12 +3560,27 @@ async function renderDashboard() {
       const sourceSection = cardEl.closest('.dash-section');
       if (sourceSection === section) return;
 
+      const oldDue = cardEl.dataset.due || '';
       moveDashCardTo(cardEl, section, payload.board, newDue);
 
       try {
         await api.put(
           `/api/cards/${payload.board}/${payload.list}/${payload.card}`,
           { due: newDue });
+        cardEl.dataset.due = newDue || '';
+        if (oldDue !== (newDue || '')) {
+          pushHistoryEntry({
+            forward: [{
+              type: 'timeline-move', card: payload.card,
+              board: payload.board, list: payload.list, due: newDue,
+            }],
+            reverse: [{
+              type: 'timeline-move', card: payload.card,
+              board: payload.board, list: payload.list, due: oldDue,
+            }],
+            label: `due ${payload.card}`,
+          });
+        }
       } catch (err) {
         alert('Failed to update due date: ' + err.message);
         await renderDashboard();
@@ -4434,6 +4627,8 @@ document.getElementById('nc-title').addEventListener('keydown', (e) => {
 });
 
 document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
+document.getElementById('btn-undo').addEventListener('click', () => undo());
+document.getElementById('btn-redo').addEventListener('click', () => redo());
 
 /* ================================================================
    LLM Settings modal
@@ -4948,6 +5143,7 @@ async function applyOpsForTurn(bubble, turnIndex) {
     appendErrorLine(bubble, 'Apply failed: ' + err.message);
     return;
   }
+  recordAgentMovesFromApply(selected, result);
 
   const applied = result.applied || [];
   const skipped = result.skipped || [];
@@ -5219,6 +5415,7 @@ async function askApplyOpsForTurn(bubble, turnIndex) {
     askAppendError(bubble, 'Apply failed: ' + err.message);
     return;
   }
+  recordAgentMovesFromApply(selected, result);
 
   const applied = result.applied || [];
   const skipped = result.skipped || [];
@@ -5675,6 +5872,7 @@ document.getElementById('btn-notes-apply').addEventListener('click', async () =>
     alert('Apply failed: ' + err.message);
     return;
   }
+  recordAgentMovesFromApply(selected, result);
   const out = document.getElementById('notes-result');
   const skipped = result.skipped || [];
   const applied = result.applied || [];
@@ -6016,6 +6214,7 @@ document.getElementById('btn-briefing-apply').addEventListener('click', async ()
     alert('Apply failed: ' + err.message);
     return;
   }
+  recordAgentMovesFromApply(selected, result);
   const out = document.getElementById('briefing-result');
   const skipped = result.skipped || [];
   const applied = result.applied || [];
@@ -6233,6 +6432,12 @@ document.addEventListener('keydown', (e) => {
       searchInput.blur();
     }
     return;
+  }
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && !isInput) {
+    if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
   }
 
   if (isInput) return;
