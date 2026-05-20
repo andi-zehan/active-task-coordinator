@@ -6236,14 +6236,43 @@ document.getElementById('btn-briefing-save-prompt').addEventListener('click', as
   }
 });
 
+// Briefing pins a snapshot of all boards + live cards (notes.build_toc) into
+// the model's first message. Surface that scope as a 📌 step so the user
+// knows the briefing is grounded in their actual data, not generic advice.
+function _briefingPinnedContextLabel() {
+  const boardCount = (state.boards || []).length;
+  const cardCount = state.idIndex && state.idIndex.size ? state.idIndex.size : 0;
+  if (!boardCount) return '';
+  const boardWord = boardCount === 1 ? 'board' : 'boards';
+  const cardWord = cardCount === 1  ? 'card' : 'cards';
+  return `${boardCount} ${boardWord}, ${cardCount} live ${cardWord}`;
+}
+
 document.getElementById('btn-briefing-generate').addEventListener('click', async () => {
   const prompt = document.getElementById('briefing-prompt').value.trim();
   if (!prompt) return;
   const generateBtn = document.getElementById('btn-briefing-generate');
   generateBtn.disabled = true;
   const { host: agentHost, ctx: agentCtx } = mountAgentHost('briefing-events');
+  const pinned = _briefingPinnedContextLabel();
+  if (pinned) _appendAgentStep(agentHost, '📌', `Scanning ${pinned}`);
+  setAgentStatus(agentHost, 'Reviewing your boards…');
+  // Briefings interleave research (tool calls) with writing (text blocks).
+  // The first text chunk marks the shift — switch status so the user sees
+  // "Writing…" while prose streams in. ctx.briefingWriting prevents repeat
+  // toggling on every subsequent text chunk.
   try {
     const result = await streamBriefing(prompt, (ev) => {
+      if (ev.type === 'started') {
+        applyAgentEvent(agentHost, ev, agentCtx);
+        setAgentStatus(agentHost, 'Reviewing your boards…');
+        return;
+      }
+      if (ev.type === 'text' && !agentCtx.briefingWriting) {
+        agentCtx.briefingWriting = true;
+        setAgentStatus(agentHost, 'Writing your briefing…');
+        _appendAgentStep(agentHost, '✍️', 'Writing the briefing');
+      }
       applyAgentEvent(agentHost, ev, agentCtx);
     });
     finishAgentStatus(agentHost, 'Done');
@@ -6276,10 +6305,24 @@ document.getElementById('btn-briefing-back').addEventListener('click', () => sho
     sendBtn.disabled = true;
     applyBtn.disabled = true;
     const { host: agentHost, ctx: agentCtx } = mountAgentHost('briefing-refine-events');
+    _appendAgentStep(agentHost, '📌', `Revising with your feedback`);
+    setAgentStatus(agentHost, 'Revising the briefing…');
     try {
       const result = await streamBriefingRefine(
         briefingState.id, briefingState.ops, briefingState.text, feedback,
-        (ev) => applyAgentEvent(agentHost, ev, agentCtx),
+        (ev) => {
+          if (ev.type === 'started') {
+            applyAgentEvent(agentHost, ev, agentCtx);
+            setAgentStatus(agentHost, 'Revising the briefing…');
+            return;
+          }
+          if (ev.type === 'text' && !agentCtx.briefingWriting) {
+            agentCtx.briefingWriting = true;
+            setAgentStatus(agentHost, 'Writing the revision…');
+            _appendAgentStep(agentHost, '✍️', 'Writing the revision');
+          }
+          applyAgentEvent(agentHost, ev, agentCtx);
+        },
       );
       finishAgentStatus(agentHost, 'Done');
       briefingState.ops = result.operations || [];
