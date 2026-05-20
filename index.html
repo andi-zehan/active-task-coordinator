@@ -952,19 +952,74 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   white-space: pre-wrap;
   word-break: break-word;
 }
-.chat-tool-line {
-  font-family: 'SFMono-Regular', Consolas, monospace;
-  font-size: 11px;
-  color: #5e6c84;
-  margin: 2px 0;
-}
-.chat-status {
-  font-size: 11px;
-  color: #5e6c84;
-  font-style: italic;
+/* ── Agent activity panel ─────────────────────────────────────────
+   One reusable component for showing what the LLM-driven flow is
+   currently doing (status line) and what it's done so far (collapsed
+   <details>). Used by chat sidebar, Ask modal, Process Notes, and
+   AI Briefing. Each event renders into the same shape so the four
+   surfaces feel coherent. */
+.agent-panel { display: block; }
+.agent-status {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-size: 12px;
+  color: #5e6c84;
+  font-style: italic;
+  margin-bottom: 4px;
+}
+.agent-status .agent-status-text { font-style: italic; }
+.agent-status.error { color: #bf2600; font-style: normal; font-weight: 500; }
+.agent-steps {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #42526e;
+}
+.agent-steps[hidden] { display: none; }
+.agent-steps > summary {
+  cursor: pointer;
+  color: #5e6c84;
+  font-size: 11px;
+  padding: 2px 0;
+  list-style: none;
+  outline: none;
+  user-select: none;
+}
+.agent-steps > summary::-webkit-details-marker { display: none; }
+.agent-steps > summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 120ms ease;
+  font-size: 10px;
+  color: #97a0af;
+}
+.agent-steps[open] > summary::before { content: '▾ '; }
+.agent-steps > summary:hover { color: #172b4d; }
+.agent-steps-list {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #f4f5f7;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-step {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #42526e;
+  word-break: break-word;
+}
+.agent-step.error { color: #bf2600; }
+.agent-step-emoji {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+  margin-right: 4px;
+}
+.agent-step-result {
+  color: #7a869a;
+  font-size: 11px;
 }
 
 /* Reusable inline spinner. Pair with text via display:inline-flex on the parent. */
@@ -1035,14 +1090,9 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 /* Tighten the bubble's first/last children so md doesn't double-pad. */
 #ask-messages .ask-text > *:first-child { margin-top: 0; }
 #ask-messages .ask-text > *:last-child  { margin-bottom: 0; }
-/* Tool-call activity is secondary to the prose — push it down and dim it. */
-#ask-messages .chat-tools:not(:empty) {
-  margin: 8px 0 0 0;
-  padding-top: 8px;
-  border-top: 1px dashed #ebecf0;
-  opacity: 0.75;
-}
-#ask-messages .chat-tools:not(:empty) + .ask-text { margin-top: 10px; }
+/* Agent panel sits above the prose in Ask bubbles — give it breathing room
+   when the prose also rendered. */
+#ask-messages .agent-panel + .ask-text:not(:empty) { margin-top: 10px; }
 .chat-ops-panel .refine-form {
   margin-top: 8px;
   display: flex; flex-direction: column; gap: 6px;
@@ -2002,9 +2052,8 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
           <label class="field-label">Note text</label>
           <textarea id="notes-text" rows="20" style="width:100%;font-family:monospace;font-size:13px;padding:8px;border:1px solid #dfe1e6;border-radius:4px;box-sizing:border-box;"></textarea>
         </div>
-        <div id="notes-events" hidden style="margin-bottom:12px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="notes-events" hidden class="agent-host" style="margin-bottom:12px;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-          <span id="notes-spinner" hidden class="spinner-row"><span class="spinner"></span>Analyzing…</span>
           <button id="btn-notes-cancel" class="header-btn">Cancel</button>
           <button id="btn-notes-analyze" class="btn-new-card">Analyze</button>
         </div>
@@ -2014,11 +2063,10 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <h2>Preview</h2>
         <p id="notes-summary" style="font-size:13px;color:#5e6c84;"></p>
         <div id="notes-ops"></div>
-        <div id="notes-refine-events" hidden style="margin-top:8px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:120px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="notes-refine-events" hidden class="agent-host" style="margin-top:8px;"></div>
         <div id="notes-refine-form" style="margin-top:10px;padding:10px;background:#f4f5f7;border-radius:6px;display:flex;flex-direction:column;gap:6px;">
           <textarea id="notes-refine-text" placeholder="Tell the AI what to change before applying…" style="width:100%;box-sizing:border-box;min-height:60px;padding:6px 8px;border:1px solid #dfe1e6;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-            <span id="notes-refine-spinner" hidden class="spinner-row"><span class="spinner"></span>Revising…</span>
             <button id="btn-notes-refine-send" class="btn-sm primary">Ask AI to revise</button>
           </div>
         </div>
@@ -2062,9 +2110,8 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
           <button id="btn-briefing-reset-prompt" class="btn-sm" title="Restore the textarea to the factory default prompt (does not persist until you click Save).">Reset to factory default</button>
           <span id="briefing-prompt-status" style="font-size:12px;color:#5e6c84;"></span>
         </div>
-        <div id="briefing-events" hidden style="margin-bottom:12px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:160px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="briefing-events" hidden class="agent-host" style="margin-bottom:12px;"></div>
         <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-          <span id="briefing-spinner" hidden class="spinner-row"><span class="spinner"></span>Generating…</span>
           <button id="btn-briefing-cancel" class="header-btn">Cancel</button>
           <button id="btn-briefing-generate" class="btn-new-card">Generate</button>
         </div>
@@ -2076,11 +2123,10 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
         <p id="briefing-summary" style="font-size:12px;color:#5e6c84;margin-top:8px;"></p>
         <h3 style="font-size:14px;margin-top:14px;">Proposed actions</h3>
         <div id="briefing-ops"></div>
-        <div id="briefing-refine-events" hidden style="margin-top:8px;font-family:'SFMono-Regular',Consolas,monospace;font-size:12px;color:#42526e;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:4px;padding:8px 10px;max-height:120px;overflow-y:auto;line-height:1.5;"></div>
+        <div id="briefing-refine-events" hidden class="agent-host" style="margin-top:8px;"></div>
         <div id="briefing-refine-form" style="margin-top:10px;padding:10px;background:#f4f5f7;border-radius:6px;display:flex;flex-direction:column;gap:6px;">
           <textarea id="briefing-refine-text" placeholder="Tell the AI what to change before applying…" style="width:100%;box-sizing:border-box;min-height:60px;padding:6px 8px;border:1px solid #dfe1e6;border-radius:4px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
           <div style="display:flex;justify-content:flex-end;gap:8px;align-items:center;">
-            <span id="briefing-refine-spinner" hidden class="spinner-row"><span class="spinner"></span>Revising…</span>
             <button id="btn-briefing-refine-send" class="btn-sm primary">Ask AI to revise</button>
           </div>
         </div>
@@ -4802,6 +4848,192 @@ if (localStorage.getItem(CHAT_OPEN_KEY) === '1') {
 }
 
 /* ================================================================
+   Shared agent feedback — humanize tool calls + activity panel
+   ----------------------------------------------------------------
+   Used by all four LLM-driven surfaces (chat sidebar, Ask modal,
+   Process Notes, AI Briefing). Each emits the same SSE event
+   vocabulary; this layer turns those events into friendly text and
+   manages a "current status / collapsed history" panel.
+   ================================================================ */
+
+// Resolve a C-N id to "C-12 'Demo of DFMEA'" if we know the title; else just the id.
+function _idWithTitle(id) {
+  if (!id) return '';
+  const entry = state.idIndex && state.idIndex.get ? state.idIndex.get(id) : null;
+  if (entry && entry.title) return `${id} — “${entry.title}”`;
+  return id;
+}
+
+function _quote(s) {
+  if (!s) return '';
+  const t = String(s);
+  return t.length > 40 ? `“${t.slice(0, 40)}…”` : `“${t}”`;
+}
+
+// Humanize a tool-use event into {emoji, text} for both the live status line
+// and the collapsed history. `text` is a present-progressive phrase
+// ("Searching for X…") suitable for the status line.
+function humanizeToolCall(name, args) {
+  const a = args || {};
+  switch (name) {
+    case 'list_boards':         return { emoji: '📚', text: 'Listing your boards…' };
+    case 'list_cards': {
+      const scope = a.board ? (a.list ? `${a.board} / ${a.list}` : a.board) : 'a board';
+      return { emoji: '📋', text: `Listing cards in ${scope}…` };
+    }
+    case 'search_cards':        return { emoji: '🔍', text: `Searching cards for ${_quote(a.query)}…` };
+    case 'list_overdue':        return { emoji: '⏰', text: 'Checking overdue cards…' };
+    case 'list_due_today':      return { emoji: '📅', text: 'Checking what’s due today…' };
+    case 'list_due_this_week':  return { emoji: '🗓', text: 'Checking what’s due this week…' };
+    case 'find_by_label':       return { emoji: '🏷', text: `Finding cards labelled ${_quote(a.label)}…` };
+    case 'find_by_assignee':    return { emoji: '👤', text: `Finding cards assigned to ${_quote(a.name)}…` };
+    case 'get_card_by_id':      return { emoji: '📄', text: `Reading ${_idWithTitle(a.id)}…` };
+    case 'read_card':           return { emoji: '📄', text: `Reading ${a.board || '?'} / ${a.list || '?'} / ${a.slug || '?'}…` };
+    // Write tools — these queue for review, they don't execute yet.
+    case 'create_card':         return { emoji: '➕', text: `Proposing new card ${_quote(a.title)} in ${a.board || '?'} / ${a.list || '?'}` };
+    case 'add_comment':         return { emoji: '💬', text: `Proposing comment on ${_idWithTitle(a.id)}` };
+    case 'tick_checklist':      return { emoji: '☑️', text: `Proposing to tick ${_quote(a.item)} on ${_idWithTitle(a.id)}` };
+    case 'add_checklist_item':  return { emoji: '➕', text: `Proposing checklist item ${_quote(a.item)} on ${_idWithTitle(a.id)}` };
+    case 'move_card':           return { emoji: '↪️', text: `Proposing move of ${_idWithTitle(a.id)} → ${a.target_list || '?'}` };
+    case 'update_field':        return { emoji: '✏️', text: `Proposing ${a.field || 'field'} update on ${_idWithTitle(a.id)}` };
+    case 'rename_card':         return { emoji: '✏️', text: `Proposing rename of ${_idWithTitle(a.id)}` };
+    case 'finish':              return { emoji: '🏁', text: 'Wrapping up…' };
+  }
+  return { emoji: '🛠', text: name };
+}
+
+// Friendly equivalent of the server-side _summarize_read_result strings.
+// Returns '' when there's nothing useful to add (e.g. write-tool queue ack).
+function humanizeResult(name, args, summary) {
+  if (!summary) return '';
+  const a = args || {};
+  if (summary.startsWith('error:')) return summary;
+  // The server already produces "3 card(s)" / "5 match(es)" — light cleanup
+  // (drop trailing s-parens) so it reads naturally as a one-line follow-up.
+  const tidy = summary.replace(/\(s\)/g, 's').replace(/\(es\)/g, 'es');
+  if (name === 'get_card_by_id') return `read ${_idWithTitle(a.id)}`;
+  return tidy;
+}
+
+// Build a fresh agent-panel host inside `parent`. Returns the host element,
+// which exposes a small API via dataset for the event handler.
+function createAgentPanel(parent) {
+  const host = document.createElement('div');
+  host.className = 'agent-panel';
+  host.innerHTML = `
+    <div class="agent-status">
+      <span class="spinner"></span>
+      <span class="agent-status-text">Thinking…</span>
+    </div>
+    <details class="agent-steps" hidden>
+      <summary><span class="agent-steps-count">0</span> steps</summary>
+      <div class="agent-steps-list"></div>
+    </details>
+  `;
+  parent.appendChild(host);
+  return host;
+}
+
+function setAgentStatus(host, text, opts) {
+  if (!host) return;
+  const status = host.querySelector('.agent-status');
+  const txt = host.querySelector('.agent-status-text');
+  if (!txt) return;
+  txt.textContent = text;
+  if (opts && opts.error) {
+    status.classList.add('error');
+    const sp = status.querySelector('.spinner');
+    if (sp) sp.remove();
+  }
+}
+
+function finishAgentStatus(host, finalText) {
+  if (!host) return;
+  const status = host.querySelector('.agent-status');
+  if (!status) return;
+  // Done state: drop the spinner, drop the status line entirely if we have
+  // history to show — otherwise leave a one-liner like "Done".
+  const steps = host.querySelector('.agent-steps');
+  const hasSteps = steps && !steps.hidden;
+  if (hasSteps) {
+    status.remove();
+  } else {
+    const sp = status.querySelector('.spinner');
+    if (sp) sp.remove();
+    const txt = status.querySelector('.agent-status-text');
+    if (txt && finalText) txt.textContent = finalText;
+    status.style.fontStyle = 'normal';
+  }
+}
+
+// Append one step to the collapsed history. Caller decides what the row says;
+// returns the element so a later result can be tacked on inline.
+function _appendAgentStep(host, emoji, text, extraClass) {
+  const steps = host.querySelector('.agent-steps');
+  const list = host.querySelector('.agent-steps-list');
+  if (!steps || !list) return null;
+  steps.hidden = false;
+  const row = document.createElement('div');
+  row.className = 'agent-step' + (extraClass ? ' ' + extraClass : '');
+  row.innerHTML = `<span class="agent-step-emoji">${emoji || '•'}</span><span class="agent-step-text"></span>`;
+  row.querySelector('.agent-step-text').textContent = text;
+  list.appendChild(row);
+  const count = steps.querySelector('.agent-steps-count');
+  if (count) count.textContent = list.children.length;
+  return row;
+}
+
+// Apply one SSE event to the agent panel. `ctx` carries per-stream state
+// (the row of the most recent tool, so a `result` event can amend it).
+function applyAgentEvent(host, ev, ctx) {
+  if (!host || !ev) return;
+  ctx = ctx || {};
+  switch (ev.type) {
+    case 'started':
+      setAgentStatus(host, 'Thinking…');
+      break;
+    case 'turn':
+      // Don't churn the status text on turn-only events — wait for the next
+      // tool call to say something concrete. Keep the existing status.
+      break;
+    case 'tool': {
+      const { emoji, text } = humanizeToolCall(ev.name, ev.args);
+      setAgentStatus(host, text);
+      ctx.lastToolRow = _appendAgentStep(host, emoji, text);
+      ctx.lastToolName = ev.name;
+      ctx.lastToolArgs = ev.args;
+      break;
+    }
+    case 'result': {
+      const extra = humanizeResult(ctx.lastToolName, ctx.lastToolArgs, ev.summary);
+      if (extra && ctx.lastToolRow) {
+        const sp = document.createElement('span');
+        sp.className = 'agent-step-result';
+        sp.textContent = '  → ' + extra;
+        ctx.lastToolRow.appendChild(sp);
+      }
+      break;
+    }
+    case 'queued': {
+      const { emoji, text } = humanizeToolCall(ev.op, ev.args);
+      setAgentStatus(host, text);
+      _appendAgentStep(host, emoji, text);
+      break;
+    }
+    case 'finish':
+      if (ev.summary) {
+        setAgentStatus(host, ev.summary);
+        _appendAgentStep(host, '🏁', ev.summary);
+      }
+      break;
+    case 'error':
+      setAgentStatus(host, ev.message || 'Something went wrong.', { error: true });
+      _appendAgentStep(host, '❌', ev.message || 'error', 'error');
+      break;
+  }
+}
+
+/* ================================================================
    Chat Sidebar — streaming, render, send
    ================================================================ */
 
@@ -4858,38 +5090,16 @@ function renderUserMessage(text) {
 function renderAssistantBubble() {
   const wrap = document.createElement('div');
   wrap.className = 'chat-msg-assistant';
+  // .chat-agent holds the shared agent-panel; .chat-text is the model's prose.
   wrap.innerHTML = `
-    <div class="chat-status"><span class="spinner"></span><span class="chat-status-text">Thinking…</span></div>
-    <div class="chat-tools"></div>
+    <div class="chat-agent"></div>
     <div class="chat-text"></div>
     <div class="chat-ops"></div>
   `;
   document.getElementById('chat-messages').appendChild(wrap);
+  createAgentPanel(wrap.querySelector('.chat-agent'));
   scrollChatToBottom();
   return wrap;
-}
-
-function setBubbleStatus(bubble, text) {
-  const s = bubble.querySelector('.chat-status .chat-status-text');
-  if (s) s.textContent = text;
-}
-function clearBubbleStatus(bubble) {
-  const s = bubble.querySelector('.chat-status');
-  if (s) s.remove();
-}
-
-function appendToolLine(bubble, name, args) {
-  const tools = bubble.querySelector('.chat-tools');
-  const line = document.createElement('div');
-  line.className = 'chat-tool-line';
-  const argsStr = Object.keys(args || {}).length ? ' ' + JSON.stringify(args) : '';
-  line.textContent = `→ ${name}${argsStr}`;
-  tools.appendChild(line);
-  scrollChatToBottom();
-  return line;
-}
-function appendToolResultSummary(toolLine, summary) {
-  if (toolLine && summary) toolLine.textContent += `  ${summary}`;
 }
 
 function appendAssistantText(bubble, text) {
@@ -5200,27 +5410,19 @@ async function sendChatMessage(opts) {
   chatState.inflight = true;
   document.getElementById('btn-chat-send').disabled = true;
 
-  let lastToolLine = null;
+  const agentHost = bubble.querySelector('.agent-panel');
+  const agentCtx = {};
 
   try {
     const done = await streamChat(chatState.messages, (ev) => {
+      // The shared panel handles started/turn/tool/result/queued/finish/error
+      // events. We still need flow-specific handling for `queued` (push into
+      // pendingByTurn + render the proposals panel), `text` (model prose),
+      // and `done` (drop the spinner).
+      applyAgentEvent(agentHost, ev, agentCtx);
       switch (ev.type) {
-        case 'started':
-          setBubbleStatus(bubble, 'Working…');
-          break;
-        case 'turn':
-          setBubbleStatus(bubble, `Turn ${ev.n}…`);
-          break;
-        case 'tool':
-          lastToolLine = appendToolLine(bubble, ev.name, ev.args);
-          break;
-        case 'result':
-          appendToolResultSummary(lastToolLine, ev.summary);
-          break;
         case 'queued':
           if (!chatState.pendingByTurn[turnIndex]) chatState.pendingByTurn[turnIndex] = [];
-          // Store as a full op (op name + all args), matching the shape
-          // /api/notes/apply expects.
           chatState.pendingByTurn[turnIndex].push({ op: ev.op, ...(ev.args || {}) });
           renderOpsPanelForTurn(bubble, turnIndex);
           break;
@@ -5228,14 +5430,16 @@ async function sendChatMessage(opts) {
           appendAssistantText(bubble, ev.text);
           break;
         case 'done':
-          clearBubbleStatus(bubble);
+          finishAgentStatus(agentHost, 'Done');
           break;
       }
+      scrollChatToBottom();
     });
     if (done && Array.isArray(done.messages_appended)) {
       chatState.messages.push(...done.messages_appended);
     }
   } catch (err) {
+    setAgentStatus(agentHost, err.message, { error: true });
     appendErrorLine(bubble, err.message);
   } finally {
     chatState.inflight = false;
@@ -5308,6 +5512,17 @@ function _askScroll() {
   const el = document.getElementById('ask-messages');
   el.scrollTop = el.scrollHeight;
 }
+
+// Build a step-friendly label for the pinned context — short enough to fit
+// on a single line. For card context, look up the title from state.idIndex
+// so the step reads "C-12 — Demo of DFMEA" instead of just "C-12".
+function _askPinnedContextLabel() {
+  const ctx = askState.context;
+  if (!ctx) return '';
+  if (ctx.type === 'view') return `all cards in ${ctx.view || 'this view'}`;
+  if (ctx.type === 'card') return _idWithTitle(ctx.id);
+  return '';
+}
 function askRenderUser(text) {
   const el = document.createElement('div');
   el.className = 'chat-msg-user';
@@ -5321,8 +5536,7 @@ function askRenderAssistantBubble() {
   // .ask-text is markdown-rendered (briefing-style), so it must NOT inherit
   // the bubble's white-space:pre-wrap — we want native HTML formatting.
   wrap.innerHTML = `
-    <div class="chat-status"><span class="spinner"></span><span class="chat-status-text">Thinking…</span></div>
-    <div class="chat-tools"></div>
+    <div class="chat-agent"></div>
     <div class="ask-text md-body" style="white-space:normal;"></div>
     <div class="chat-ops"></div>
   `;
@@ -5331,29 +5545,9 @@ function askRenderAssistantBubble() {
   // model emits them across multiple text chunks.
   wrap._askMd = '';
   document.getElementById('ask-messages').appendChild(wrap);
+  createAgentPanel(wrap.querySelector('.chat-agent'));
   _askScroll();
   return wrap;
-}
-function askSetStatus(bubble, text) {
-  const s = bubble.querySelector('.chat-status .chat-status-text');
-  if (s) s.textContent = text;
-}
-function askClearStatus(bubble) {
-  const s = bubble.querySelector('.chat-status');
-  if (s) s.remove();
-}
-function askAppendToolLine(bubble, name, args) {
-  const tools = bubble.querySelector('.chat-tools');
-  const line = document.createElement('div');
-  line.className = 'chat-tool-line';
-  const argsStr = Object.keys(args || {}).length ? ' ' + JSON.stringify(args) : '';
-  line.textContent = `→ ${name}${argsStr}`;
-  tools.appendChild(line);
-  _askScroll();
-  return line;
-}
-function askAppendToolResult(line, summary) {
-  if (line && summary) line.textContent += `  ${summary}`;
 }
 function askAppendText(bubble, text) {
   const prose = bubble.querySelector('.ask-text');
@@ -5535,26 +5729,38 @@ async function askSendMessage(opts) {
   askState.inflight = true;
   sendBtn.disabled = true;
 
-  let lastToolLine = null;
+  const agentHost = bubble.querySelector('.agent-panel');
+  const agentCtx = {};
+  // Ask pre-loads the whole view (or one card + neighborhood) into the
+  // model's first message as a "pinned context" snapshot. So most questions
+  // get answered without any tool calls, which previously made the bubble
+  // look like the AI did nothing. Surface the snapshot as a step + status
+  // so the user knows what the AI is actually grounded in.
+  const pinnedLabel = _askPinnedContextLabel();
+  if (pinnedLabel) _appendAgentStep(agentHost, '📌', `Working with ${pinnedLabel}`);
+  setAgentStatus(agentHost, 'Reading your snapshot…');
   const onEvent = (ev) => {
+    applyAgentEvent(agentHost, ev, agentCtx);
     switch (ev.type) {
+      case 'started':
+        // applyAgentEvent just reset the status to "Thinking…" — restore our
+        // snapshot status so it persists until a real tool call or text arrives.
+        setAgentStatus(agentHost, 'Reading your snapshot…');
+        break;
       case 'seed':
         // First turn only: server hands us the seeded user message so we can
         // mirror its history client-side without rebuilding the snapshot.
         askState.messages.push(ev.message);
         break;
-      case 'started':  askSetStatus(bubble, 'Working…'); break;
-      case 'turn':     askSetStatus(bubble, `Turn ${ev.n}…`); break;
-      case 'tool':     lastToolLine = askAppendToolLine(bubble, ev.name, ev.args); break;
-      case 'result':   askAppendToolResult(lastToolLine, ev.summary); break;
       case 'queued':
         if (!askState.pendingByTurn[turnIndex]) askState.pendingByTurn[turnIndex] = [];
         askState.pendingByTurn[turnIndex].push({ op: ev.op, ...(ev.args || {}) });
         askRenderOpsPanel(bubble, turnIndex);
         break;
       case 'text':     askAppendText(bubble, ev.text); break;
-      case 'done':     askClearStatus(bubble); break;
+      case 'done':     finishAgentStatus(agentHost, 'Done'); break;
     }
+    _askScroll();
   };
 
   try {
@@ -5576,6 +5782,7 @@ async function askSendMessage(opts) {
       askState.messages.push(...done.messages_appended);
     }
   } catch (err) {
+    setAgentStatus(agentHost, err.message, { error: true });
     askAppendError(bubble, err.message);
   } finally {
     askState.inflight = false;
@@ -5635,7 +5842,6 @@ function closeNotesModal() {
 document.getElementById('btn-process-notes').addEventListener('click', () => {
   document.getElementById('notes-text').value = '';
   document.getElementById('notes-title').value = '';
-  document.getElementById('notes-spinner').hidden = true;
   const evts = document.getElementById('notes-events');
   evts.hidden = true;
   evts.innerHTML = '';
@@ -5650,40 +5856,14 @@ document.getElementById('btn-notes-close').addEventListener('click', closeNotesM
 // proposed-op edits live only in memory; a stray click outside would discard
 // them without warning.
 
-function formatNotesEvent(ev) {
-  switch (ev.type) {
-    case 'started':  return `🟢 Started — note ${ev.note_id}`;
-    case 'turn':     return `↻ Turn ${ev.n}`;
-    case 'tool': {
-      const a = ev.args || {};
-      if (ev.name === 'search_cards')  return `🔍 search_cards "${a.query || ''}"`;
-      if (ev.name === 'read_card')     return `📄 read_card ${a.board || '?'}/${a.list || '?'}/${a.slug || '?'}`;
-      if (ev.name === 'list_boards')   return `📚 list_boards`;
-      if (ev.name === 'list_cards')    return `📋 list_cards ${a.board || '?'}${a.list ? '/' + a.list : ''}`;
-      if (ev.name === 'create_card')   return `➕ create_card "${a.title || ''}" → ${a.board || '?'}/${a.list || '?'}`;
-      if (ev.name === 'add_comment')   return `💬 add_comment on ${a.board || '?'}/${a.card || '?'}`;
-      if (ev.name === 'tick_checklist')     return `☑️ tick "${a.item || ''}" on ${a.card || '?'}`;
-      if (ev.name === 'add_checklist_item') return `➕ checklist item "${a.item || ''}" on ${a.card || '?'}`;
-      if (ev.name === 'move_card')     return `↪️ move ${a.card || '?'} → ${a.target_list || '?'}`;
-      if (ev.name === 'update_field')  return `✏️ update ${a.field || '?'} on ${a.card || '?'}`;
-      if (ev.name === 'finish')        return `🏁 finish`;
-      return `→ ${ev.name}`;
-    }
-    case 'result':   return `   ${ev.summary || ''}`;
-    case 'queued':   return `   queued ${ev.op}`;
-    case 'finish':   return `🏁 ${ev.summary || ''}`;
-    case 'done':     return `✅ Done — ${(ev.operations || []).length} op(s) proposed`;
-    case 'error':    return `❌ ${ev.message || 'error'}`;
-    default:         return JSON.stringify(ev);
-  }
-}
-
-function appendNotesEvent(text) {
-  const panel = document.getElementById('notes-events');
-  const line = document.createElement('div');
-  line.textContent = text;
-  panel.appendChild(line);
-  panel.scrollTop = panel.scrollHeight;
+// Reset an .agent-host container (used by Notes / Briefing modal flows) and
+// install a fresh agent-panel. Returns { host, ctx } for the event handler.
+function mountAgentHost(hostId) {
+  const wrap = document.getElementById(hostId);
+  wrap.hidden = false;
+  wrap.innerHTML = '';
+  const host = createAgentPanel(wrap);
+  return { host, ctx: {} };
 }
 
 async function streamNotesAnalyze(text, title, onEvent) {
@@ -5761,16 +5941,13 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
   const text = document.getElementById('notes-text').value.trim();
   if (!text) return;
   const title = document.getElementById('notes-title').value;
-  const evts = document.getElementById('notes-events');
-  const spinner = document.getElementById('notes-spinner');
-  evts.hidden = false;
-  evts.innerHTML = '';
   document.getElementById('btn-notes-analyze').disabled = true;
-  spinner.hidden = false;
+  const { host: agentHost, ctx: agentCtx } = mountAgentHost('notes-events');
   try {
     const result = await streamNotesAnalyze(text, title, (ev) => {
-      appendNotesEvent(formatNotesEvent(ev));
+      applyAgentEvent(agentHost, ev, agentCtx);
     });
+    finishAgentStatus(agentHost, 'Done');
     currentNoteId = result.note_id;
     currentOps = result.operations || [];
     document.getElementById('notes-summary').textContent =
@@ -5779,11 +5956,10 @@ document.getElementById('btn-notes-analyze').addEventListener('click', async () 
     resetNotesApplyButton();
     showNotesStep(2);
   } catch (err) {
-    appendNotesEvent(`❌ ${err.message}`);
+    setAgentStatus(agentHost, err.message, { error: true });
     alert('Analyze failed: ' + err.message);
   } finally {
     document.getElementById('btn-notes-analyze').disabled = false;
-    spinner.hidden = true;
   }
 });
 
@@ -5809,39 +5985,29 @@ document.getElementById('btn-notes-back').addEventListener('click', () => showNo
   const textEl = document.getElementById('notes-refine-text');
   const sendBtn = document.getElementById('btn-notes-refine-send');
   const applyBtn = document.getElementById('btn-notes-apply');
-  const evts = document.getElementById('notes-refine-events');
 
-  const spinner = document.getElementById('notes-refine-spinner');
   const send = async () => {
     const feedback = textEl.value.trim();
     if (!feedback || !currentNoteId) return;
     sendBtn.disabled = true;
     applyBtn.disabled = true;
-    spinner.hidden = false;
-    evts.hidden = false;
-    evts.innerHTML = '';
-    const append = (line) => {
-      const div = document.createElement('div');
-      div.textContent = line;
-      evts.appendChild(div);
-      evts.scrollTop = evts.scrollHeight;
-    };
+    const { host: agentHost, ctx: agentCtx } = mountAgentHost('notes-refine-events');
     try {
       const result = await streamNotesRefine(currentNoteId, currentOps, feedback, (ev) => {
-        append(formatNotesEvent(ev));
+        applyAgentEvent(agentHost, ev, agentCtx);
       });
+      finishAgentStatus(agentHost, 'Done');
       currentOps = result.operations || [];
       document.getElementById('notes-summary').textContent =
         `Note: ${currentNoteId} — ${result.summary || ''}`;
       renderOps(currentOps);
       textEl.value = '';
     } catch (err) {
-      append(`❌ ${err.message}`);
+      setAgentStatus(agentHost, err.message, { error: true });
       alert('Refine failed: ' + err.message);
     } finally {
       sendBtn.disabled = false;
       applyBtn.disabled = false;
-      spinner.hidden = true;
     }
   };
 
@@ -5939,50 +6105,6 @@ async function loadBriefingPromptConfig() {
   briefingState.factoryDefault = cfg.briefing_prompt_default || '';
 }
 
-function formatBriefingEvent(ev) {
-  switch (ev.type) {
-    case 'started':  return `🟢 Started — ${ev.briefing_id}`;
-    case 'turn':     return `↻ Turn ${ev.n}`;
-    case 'tool': {
-      const a = ev.args || {};
-      if (ev.name === 'list_overdue')        return `⏰ list_overdue`;
-      if (ev.name === 'list_due_today')      return `📅 list_due_today`;
-      if (ev.name === 'list_due_this_week')  return `🗓 list_due_this_week`;
-      if (ev.name === 'find_by_label')       return `🏷 find_by_label "${a.label || ''}"`;
-      if (ev.name === 'find_by_assignee')    return `👤 find_by_assignee "${a.name || ''}"`;
-      if (ev.name === 'get_card_by_id')      return `📄 get_card_by_id ${a.id || '?'}`;
-      if (ev.name === 'search_cards')        return `🔍 search_cards "${a.query || ''}"`;
-      if (ev.name === 'list_boards')         return `📚 list_boards`;
-      if (ev.name === 'list_cards')          return `📋 list_cards ${a.board || '?'}${a.list ? '/' + a.list : ''}`;
-      if (ev.name === 'create_card')         return `➕ create_card "${a.title || ''}" → ${a.board || '?'}/${a.list || '?'}`;
-      if (ev.name === 'add_comment')         return `💬 add_comment on ${a.id || '?'}`;
-      if (ev.name === 'tick_checklist')      return `☑️ tick "${a.item || ''}" on ${a.id || '?'}`;
-      if (ev.name === 'add_checklist_item')  return `➕ checklist item "${a.item || ''}" on ${a.id || '?'}`;
-      if (ev.name === 'move_card')           return `↪️ move ${a.id || '?'} → ${a.target_list || '?'}`;
-      if (ev.name === 'update_field')        return `✏️ update ${a.field || '?'} on ${a.id || '?'}`;
-      if (ev.name === 'rename_card')         return `✏️ rename ${a.id || '?'}`;
-      if (ev.name === 'finish')              return `🏁 finish`;
-      return `→ ${ev.name}`;
-    }
-    case 'result':   return `   ${ev.summary || ''}`;
-    case 'queued':   return `   queued ${ev.op}`;
-    case 'text':     return ``;  // text is rendered live in the briefing pane
-    case 'finish':   return `🏁 ${ev.summary || ''}`;
-    case 'done':     return `✅ Done — ${(ev.operations || []).length} op(s) proposed`;
-    case 'error':    return `❌ ${ev.message || 'error'}`;
-    default:         return '';
-  }
-}
-
-function appendBriefingEvent(panelId, text) {
-  if (!text) return;
-  const panel = document.getElementById(panelId);
-  const line = document.createElement('div');
-  line.textContent = text;
-  panel.appendChild(line);
-  panel.scrollTop = panel.scrollHeight;
-}
-
 async function streamBriefing(prompt, onEvent) {
   const r = await fetch('/api/briefing/generate', {
     method: 'POST',
@@ -6069,7 +6191,6 @@ document.getElementById('btn-briefing').addEventListener('click', async () => {
   const evts = document.getElementById('briefing-events');
   evts.hidden = true;
   evts.innerHTML = '';
-  document.getElementById('briefing-spinner').hidden = true;
   showBriefingStep(1);
   document.getElementById('briefing-overlay').classList.add('visible');
   try {
@@ -6118,17 +6239,14 @@ document.getElementById('btn-briefing-save-prompt').addEventListener('click', as
 document.getElementById('btn-briefing-generate').addEventListener('click', async () => {
   const prompt = document.getElementById('briefing-prompt').value.trim();
   if (!prompt) return;
-  const evts = document.getElementById('briefing-events');
-  const spinner = document.getElementById('briefing-spinner');
   const generateBtn = document.getElementById('btn-briefing-generate');
-  evts.hidden = false;
-  evts.innerHTML = '';
   generateBtn.disabled = true;
-  spinner.hidden = false;
+  const { host: agentHost, ctx: agentCtx } = mountAgentHost('briefing-events');
   try {
     const result = await streamBriefing(prompt, (ev) => {
-      appendBriefingEvent('briefing-events', formatBriefingEvent(ev));
+      applyAgentEvent(agentHost, ev, agentCtx);
     });
+    finishAgentStatus(agentHost, 'Done');
     briefingState.id = result.briefing_id;
     briefingState.ops = result.operations || [];
     briefingState.text = result.text || '';
@@ -6139,11 +6257,10 @@ document.getElementById('btn-briefing-generate').addEventListener('click', async
     resetBriefingApplyButton();
     showBriefingStep(2);
   } catch (err) {
-    appendBriefingEvent('briefing-events', `❌ ${err.message}`);
+    setAgentStatus(agentHost, err.message, { error: true });
     alert('Briefing failed: ' + err.message);
   } finally {
     generateBtn.disabled = false;
-    spinner.hidden = true;
   }
 });
 
@@ -6153,21 +6270,18 @@ document.getElementById('btn-briefing-back').addEventListener('click', () => sho
   const textEl = document.getElementById('briefing-refine-text');
   const sendBtn = document.getElementById('btn-briefing-refine-send');
   const applyBtn = document.getElementById('btn-briefing-apply');
-  const evts = document.getElementById('briefing-refine-events');
-  const spinner = document.getElementById('briefing-refine-spinner');
   const send = async () => {
     const feedback = textEl.value.trim();
     if (!feedback || !briefingState.id) return;
     sendBtn.disabled = true;
     applyBtn.disabled = true;
-    spinner.hidden = false;
-    evts.hidden = false;
-    evts.innerHTML = '';
+    const { host: agentHost, ctx: agentCtx } = mountAgentHost('briefing-refine-events');
     try {
       const result = await streamBriefingRefine(
         briefingState.id, briefingState.ops, briefingState.text, feedback,
-        (ev) => appendBriefingEvent('briefing-refine-events', formatBriefingEvent(ev)),
+        (ev) => applyAgentEvent(agentHost, ev, agentCtx),
       );
+      finishAgentStatus(agentHost, 'Done');
       briefingState.ops = result.operations || [];
       briefingState.text = result.text || '';
       document.getElementById('briefing-summary').textContent =
@@ -6177,12 +6291,11 @@ document.getElementById('btn-briefing-back').addEventListener('click', () => sho
       syncBriefingApplyLabel();
       textEl.value = '';
     } catch (err) {
-      appendBriefingEvent('briefing-refine-events', `❌ ${err.message}`);
+      setAgentStatus(agentHost, err.message, { error: true });
       alert('Refine failed: ' + err.message);
     } finally {
       sendBtn.disabled = false;
       applyBtn.disabled = false;
-      spinner.hidden = true;
     }
   };
   sendBtn.addEventListener('click', send);
