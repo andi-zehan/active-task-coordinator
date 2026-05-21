@@ -1319,34 +1319,24 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-weight: 600;
   vertical-align: middle;
 }
+/* `hidden` HTML attribute is overridden by display:inline-flex above —
+   restore the "actually hidden" intent so a zero-pending badge disappears. */
+.view-tab-badge[hidden] { display: none; }
+
+.toolbar-group {
+  display: contents;  /* let children flex into the .top-bar grid as if no wrapper existed */
+}
+.toolbar-group[hidden] { display: none; }
+.memory-toolbar-tab.active {
+  background: #deebff;
+  color: #0747a6;
+  border-color: #0747a6;
+}
 .memory-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 110px);
+  height: calc(100vh - 60px);
   background: #fafbfc;
-}
-.memory-view-tabs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: #fff;
-  border-bottom: 1px solid #ebecf0;
-}
-.memory-view-tab {
-  background: transparent;
-  border: 1px solid transparent;
-  padding: 6px 12px;
-  font-size: 13px;
-  color: #5e6c84;
-  cursor: pointer;
-  border-radius: 4px;
-}
-.memory-view-tab:hover { background: #f4f5f7; color: #172b4d; }
-.memory-view-tab.active {
-  background: #deebff;
-  color: #0747a6;
-  font-weight: 600;
 }
 .memory-view-body {
   flex: 1;
@@ -2175,14 +2165,25 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   <button class="header-btn icon-btn" id="btn-redo" disabled aria-label="Redo">
     <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7H6a3 3 0 0 0 0 6h4"/><path d="M10 4l3 3-3 3"/></svg>
   </button>
-  <div class="search-wrapper">
-    <input type="text" id="search-input" placeholder="Search cards... ( / )">
-    <div class="search-dropdown" id="search-dropdown"></div>
+  <div class="toolbar-group" id="toolbar-cards">
+    <div class="search-wrapper">
+      <input type="text" id="search-input" placeholder="Search cards... ( / )">
+      <div class="search-dropdown" id="search-dropdown"></div>
+    </div>
+    <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
+    <button class="header-btn top-btn" id="btn-ask" disabled title="Configure API token in Settings">&#128172; Ask</button>
+    <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
+    <button class="header-btn top-btn" id="btn-briefing" disabled title="Configure API token in Settings">&#128202; Briefing</button>
   </div>
-  <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
-  <button class="header-btn top-btn" id="btn-ask" disabled title="Configure API token in Settings">&#128172; Ask</button>
-  <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
-  <button class="header-btn top-btn" id="btn-briefing" disabled title="Configure API token in Settings">&#128202; Briefing</button>
+  <div class="toolbar-group" id="toolbar-memory" hidden>
+    <button class="header-btn top-btn memory-toolbar-tab" id="memory-toolbar-pages" data-tab="pages">Pages</button>
+    <button class="header-btn top-btn memory-toolbar-tab" id="memory-toolbar-proposals" data-tab="proposals">
+      Proposals<span id="memory-toolbar-proposals-count"></span>
+    </button>
+    <button class="header-btn top-btn" id="memory-toolbar-ask" title="Open Ask scoped to memory">&#128172; Ask about memory</button>
+    <button class="header-btn top-btn" id="memory-toolbar-lint" title="Run a lint pass now">Run lint now</button>
+    <button class="btn-new-card top-btn" id="memory-toolbar-save" title="Save page (Ctrl+S)" disabled>Save</button>
+  </div>
   <button class="header-btn top-btn" id="btn-chat-toggle" title="Toggle AI chat sidebar" hidden>&#128172; Chat</button>
   <button class="header-btn top-btn" id="btn-settings" title="LLM settings">&#9881; Settings</button>
 </div>
@@ -2221,7 +2222,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 <div class="view-container" id="view-memory">
   <div class="memory-view">
-    <div class="memory-view-tabs" id="memory-view-tabs"></div>
     <div class="memory-view-body" id="memory-view-body"></div>
   </div>
 </div>
@@ -3245,6 +3245,14 @@ function switchView(view) {
     filterBar.classList.remove('visible');
   }
   document.getElementById('lane-sidebar').style.display = (view === 'board') ? '' : 'none';
+
+  // Swap the toolbar group based on view. Memory hides the card-mode
+  // buttons (Search, +New Card, Ask, Process Notes, Briefing) and shows
+  // Pages / Proposals / Ask-about-memory / Run lint / Save instead.
+  const memoryActive = view === 'memory';
+  document.getElementById('toolbar-cards').hidden = memoryActive;
+  document.getElementById('toolbar-memory').hidden = !memoryActive;
+
   updateUndoButtons();
   refreshCurrentView();
 }
@@ -7013,9 +7021,8 @@ const MemoryUI = (() => {
         tile.style.display = 'none';
       }
     }
-    // Tab badge inside the Memory view
-    const inViewBadge = $('memory-view-tab-proposals-count');
-    if (inViewBadge) inViewBadge.textContent = n > 0 ? ` (${n})` : '';
+    // Toolbar tab counter (when in Memory view).
+    syncToolbar();
   }
 
   async function refreshBadge() {
@@ -7031,36 +7038,28 @@ const MemoryUI = (() => {
     // opts: { tab: 'pages' | 'proposals' } — used by dashboard tile to jump
     // straight to the proposal list.
     if (opts && opts.tab) activeTab = opts.tab;
-    renderTabs();
+    syncToolbar();
     await Promise.all([loadPages(), loadProposalsBadge()]);
     if (activeTab === 'pages') await renderPagesTab();
     else                       await renderProposalsTab();
   }
 
-  function renderTabs() {
-    const tabs = $('memory-view-tabs');
-    if (!tabs) return;
-    tabs.innerHTML = `
-      <button class="memory-view-tab ${activeTab === 'pages' ? 'active' : ''}" data-tab="pages">Pages</button>
-      <button class="memory-view-tab ${activeTab === 'proposals' ? 'active' : ''}" data-tab="proposals">
-        Proposals<span id="memory-view-tab-proposals-count">${pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
-      </button>
-      <span style="flex:1;"></span>
-      <button class="header-btn" id="memory-view-btn-lint" title="Run a lint pass now">Run lint now</button>
-      <button class="btn-new-card" id="memory-view-btn-ask" title="Open Ask scoped to memory">&#128172; Ask about memory</button>
-    `;
-    tabs.querySelectorAll('.memory-view-tab').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        activeTab = btn.dataset.tab;
-        renderTabs();
-        if (activeTab === 'pages') await renderPagesTab();
-        else                        await renderProposalsTab();
-      });
-    });
-    $('memory-view-btn-ask').addEventListener('click', () => {
-      openAskModal({ type: 'memory' }, 'memory wiki');
-    });
-    $('memory-view-btn-lint').addEventListener('click', runLint);
+  // Reflect tab state + proposal count + save-button state in the top toolbar.
+  // Called whenever activeTab, pendingCount, or editor dirty state changes.
+  function syncToolbar() {
+    const pagesBtn = $('memory-toolbar-pages');
+    const propBtn  = $('memory-toolbar-proposals');
+    if (pagesBtn) pagesBtn.classList.toggle('active', activeTab === 'pages');
+    if (propBtn)  propBtn.classList.toggle('active',  activeTab === 'proposals');
+    const propCount = $('memory-toolbar-proposals-count');
+    if (propCount) propCount.textContent = pendingCount > 0 ? ` (${pendingCount})` : '';
+    const saveBtn = $('memory-toolbar-save');
+    if (saveBtn) {
+      // Save only shown on Pages tab; disabled when nothing's dirty.
+      saveBtn.style.display = activeTab === 'pages' ? '' : 'none';
+      const editor = $('memory-page-editor-main');
+      saveBtn.disabled = !editor || editor.value === originalPageContent;
+    }
   }
 
   // --- Data loaders ---
@@ -7146,7 +7145,6 @@ const MemoryUI = (() => {
         <span class="memory-page-editor-dirty" id="memory-page-dirty" hidden>● unsaved</span>
         <span style="flex:1;"></span>
         <span class="memory-page-editor-status" id="memory-page-editor-status"></span>
-        <button class="btn-new-card" id="memory-page-save-btn" title="Save (Ctrl+S)">Save</button>
       </header>
       <textarea id="memory-page-editor-main" class="memory-page-editor-main" spellcheck="false"></textarea>
     `;
@@ -7156,6 +7154,7 @@ const MemoryUI = (() => {
       const dirty = ta.value !== originalPageContent;
       $('memory-page-dirty').hidden = !dirty;
       $('memory-page-editor-status').textContent = '';
+      syncToolbar();
     });
     ta.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -7163,7 +7162,7 @@ const MemoryUI = (() => {
         savePage();
       }
     });
-    $('memory-page-save-btn').addEventListener('click', savePage);
+    syncToolbar();
   }
 
   async function savePage() {
@@ -7172,22 +7171,22 @@ const MemoryUI = (() => {
     if (!ta) return;
     const content = ta.value;
     const status = $('memory-page-editor-status');
-    const saveBtn = $('memory-page-save-btn');
-    status.textContent = 'Saving…';
-    saveBtn.disabled = true;
+    const saveBtn = $('memory-toolbar-save');
+    if (status) status.textContent = 'Saving…';
+    if (saveBtn) saveBtn.disabled = true;
     try {
       await api.put('/api/memory/page/' + encodeURIComponent(currentPageName),
                     { content });
       originalPageContent = content;
-      status.textContent = 'Saved.';
+      if (status) status.textContent = 'Saved.';
       $('memory-page-dirty').hidden = true;
       // Refresh page list so the line-count for this page updates.
       await loadPages();
       renderPagesRail();
+      syncToolbar();
     } catch (e) {
-      status.textContent = 'Save failed: ' + e;
-    } finally {
-      saveBtn.disabled = false;
+      if (status) status.textContent = 'Save failed: ' + e;
+      syncToolbar();
     }
   }
 
@@ -7366,7 +7365,7 @@ const MemoryUI = (() => {
   // --- Lint trigger (streams SSE) ---
 
   async function runLint() {
-    const btn = $('memory-view-btn-lint');
+    const btn = $('memory-toolbar-lint');
     if (btn) { btn.disabled = true; btn.textContent = 'Linting…'; }
     let final = null;
     try {
@@ -7415,9 +7414,26 @@ const MemoryUI = (() => {
     }
   }
 
+  async function selectTab(tab) {
+    if (tab === activeTab) return;
+    activeTab = tab;
+    syncToolbar();
+    if (tab === 'pages') await renderPagesTab();
+    else                  await renderProposalsTab();
+  }
+
   function init() {
     refreshBadge();
     setInterval(refreshBadge, 60_000);
+    // Wire toolbar buttons (live for the lifetime of the page).
+    const wire = (id, fn) => {
+      const el = $(id); if (el) el.addEventListener('click', fn);
+    };
+    wire('memory-toolbar-pages',     () => selectTab('pages'));
+    wire('memory-toolbar-proposals', () => selectTab('proposals'));
+    wire('memory-toolbar-ask',       () => openAskModal({ type: 'memory' }, 'memory wiki'));
+    wire('memory-toolbar-lint',      runLint);
+    wire('memory-toolbar-save',      savePage);
   }
 
   return { init, enterView, refreshBadge };
