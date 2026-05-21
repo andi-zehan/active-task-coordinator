@@ -193,9 +193,10 @@ class TestAnalyze(unittest.TestCase):
         self.assertTrue(any(t["name"] == "finish" for t in kwargs["tools"]))
         sys_block = kwargs["system"][0]
         self.assertEqual(sys_block.get("cache_control"), {"type": "ephemeral"})
-        # The board INDEX is the cached prefix in user content.
-        index_block = kwargs["messages"][0]["content"][0]
-        self.assertIn("BOARD INDEX", index_block["text"])
+        # The board INDEX is the cached prefix in user content. Memory blocks
+        # (if memory is seeded) are prepended before it, so locate by content.
+        content = kwargs["messages"][0]["content"]
+        index_block = next(b for b in content if "BOARD INDEX" in b.get("text", ""))
         self.assertEqual(index_block.get("cache_control"), {"type": "ephemeral"})
 
 

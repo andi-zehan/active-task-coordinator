@@ -6,8 +6,10 @@ Differs from notes.analyze_stream in two ways:
 - Takes a full message history and returns the appended assistant turn(s)
   in the 'done' event so the caller can grow the history client-side.
 """
+import copy
 import json
 
+import memory_context
 from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
     _WRITE_OP_NAMES, _queue_op,
@@ -19,6 +21,13 @@ SYSTEM_PROMPT = """You are an assistant inside a personal kanban app.
 You can answer questions about the user's boards and cards, and you
 can propose changes (create cards, add comments, tick checklist items,
 move cards, update fields, rename cards).
+
+You have a memory wiki (org chart, external stakeholders, work preferences,
+…). The wiki's README + INDEX, plus the pages that fit a small context
+budget, are loaded into your first user message. INDEX lists every page —
+use read_memory_page(name) to load any page that wasn't pre-loaded. Use
+the wiki to ground assignment suggestions, recognize stakeholders by name,
+and apply user-specific work patterns.
 
 WRITE TOOLS DO NOT EXECUTE. They queue a proposed operation that the
 user must confirm before it is applied. When you queue ops, briefly
@@ -74,6 +83,43 @@ CHAT_TOOLS = READ_TOOL_DEFS + WRITE_TOOL_DEFS
 MAX_TOOL_TURNS = 16
 
 
+def _with_memory_prepended(messages: list) -> list:
+    """Prepend memory wiki blocks to the first user message in the history.
+
+    Idempotent across turns: only prepends when the first user message hasn't
+    already been augmented (detected by the presence of a "# MEMORY:" block).
+    Returns a new list — does not mutate the caller's history.
+    """
+    blocks = memory_context.load_memory_context()
+    if not blocks:
+        return list(messages)
+    out = [copy.deepcopy(m) for m in messages]
+    for m in out:
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        # The first user message in a chat history can be a plain string or
+        # a list of content blocks. Normalize to list-of-blocks so we can
+        # prepend uniformly.
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+        elif not isinstance(content, list):
+            return out
+        # Skip if memory is already present (e.g. continuation of an existing
+        # conversation where chat_stream was called previously).
+        already = any(
+            isinstance(b, dict) and b.get("type") == "text"
+            and isinstance(b.get("text"), str) and b["text"].startswith("# MEMORY:")
+            for b in content
+        )
+        if not already:
+            m["content"] = blocks + content
+        else:
+            m["content"] = content
+        return out
+    return out
+
+
 def _block_to_dict(block) -> dict:
     """Normalize an SDK content block into a plain dict for the next assistant turn."""
     btype = getattr(block, "type", None)
@@ -115,7 +161,7 @@ def chat_stream(messages: list, *, model: str, client,
     yield {"type": "started"}
 
     proposed_ops: list[dict] = []
-    msgs = list(messages)
+    msgs = _with_memory_prepended(messages)
     appended: list[dict] = []
     sys_text = system_prompt if system_prompt is not None else SYSTEM_PROMPT
 

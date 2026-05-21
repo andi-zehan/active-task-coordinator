@@ -54,12 +54,22 @@ Card IDs are managed by an in-memory index (`_ID_INDEX`, `_NEXT_ID_COUNTER`) see
 
 The data directory is resolved at startup by `_resolve_data_dir()` and exposed as `server.DATA_DIR`. Other modules import `server` and read `server.DATA_DIR` (and `server.LISTS`) directly — there is no separate config object. Tests temporarily reassign `server.DATA_DIR` and call `server.reset_id_index()`.
 
-### Configs — three separate files, three separate purposes
+### Configs — four separate files, four separate purposes
 - `app_config.py` → `~/.atc/config.json`: per-user, survives reinstalls. Holds `data_dir` and first-run UI flags.
 - `sync_config.py` → `./.sync-config.json` (gitignored): git-sync mode (`off` / `local` / `remote`), remote URL, branch.
 - `llm_config.py` → `./.llm-config.json` (gitignored): LLM gateway base URL, auth token, model. `get_client()` reads on every call so token rotation is immediate.
+- `memory_config.py` → `~/.atc/memory-config.json`: per-user. Holds `memory_dir` (default `~/.atc/memory/` — outside `data/` on purpose, so it lives in its own git repo), lint cadence, and the pending-proposal cap.
 
 Each config module owns a `load`/`save`/`validate`/`public_view` quartet; `public_view` masks secrets before sending to the browser. Don't merge these — keeping them split is intentional (different lifecycles, different privacy concerns).
+
+### Memory wiki: `memory_store.py`, `memory_ops.py`, `memory_context.py`, `memory_lint.py`
+A Karpathy-style LLM wiki layered into ATC. Three concentric files:
+- `memory_store.py` — the only module that touches the memory directory. Owns layout (`INDEX.md` + `README.md` + `log.md`, top-level wiki `*.md` pages, `_sources/` immutable raw inputs, `_proposals/` pending edit batches), slug safety, log rotation at 1000 lines, and `memory_fingerprint()` for the lint skip-gate.
+- `memory_context.py` — `load_memory_context()` returns Anthropic SDK blocks (README + INDEX + as many wiki pages as fit a 200-line budget, each cached separately). The first page in INDEX order is always loaded even when it busts the budget. `read_memory_page` tool exposes overflow pages on demand. Wired into `chat.py`, `notes.py`, and `briefing.py` so every agentic flow sees the wiki.
+- `memory_ops.py` — apply-side for memory write ops. `save_as_source` and `propose_memory_edits` are queued through `chat_tools._queue_op` just like card ops; on `/api/memory/apply` they route here. `propose_memory_edits` never touches a wiki page — it writes a single `_proposals/*.md` for the user to review. Actual page writes happen via `apply_proposal(proposal_id, accepted_indices)` from the proposal modal.
+- `memory_lint.py` — periodic (and manual) lint pass. Skip-gates: `lint_enabled=false`, `>= max_pending_proposals`, or fingerprint unchanged since last run. Emits at most one `*-lint.md` proposal per run. A background thread in `server.py` startup calls `run_lint()` on `lint_interval_hours` cadence (default 1h).
+
+Wiki invariants: pages refer to people/projects/stakeholders by **name only** — never `[[C-N]]` card references (cards are ephemeral, memory is not). Cross-link wiki pages with `[[page-name]]`. Reserved files (`README.md`, `INDEX.md`, `log.md`) are excluded from `list_pages()`. All LLM-driven writes flow through the proposal UI; hand-edits in your editor are allowed and the LLM re-reads on next operation.
 
 ### LLM flows: `notes.py`, `chat.py`, `chat_tools.py`
 Two LLM-driven entry points share one tool kit:

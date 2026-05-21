@@ -1170,5 +1170,189 @@ class TestChatEndpoint(unittest.TestCase):
         self.assertIn("messages", body.get("error", ""))
 
 
+class TestMemoryEndpoints(unittest.TestCase):
+    """End-to-end HTTP tests for /api/memory/* against a loopback server."""
+
+    PORT = 8092
+
+    @classmethod
+    def setUpClass(cls):
+        import memory_config, memory_store
+        cls.tmp = tempfile.mkdtemp()
+        cls.mem_path = Path(cls.tmp) / "memory"
+        cls.orig_get = memory_config.get_memory_dir
+        memory_config.get_memory_dir = lambda: cls.mem_path
+        memory_store.init_if_missing()
+
+        cls.orig_data_dir = server.DATA_DIR
+        server.DATA_DIR = Path(cls.tmp) / "data"
+        server.ensure_data_dir()
+
+        cls.server = HTTPServer(('127.0.0.1', cls.PORT), server.RequestHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever)
+        cls.thread.daemon = True
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        import memory_config
+        cls.server.shutdown()
+        server.DATA_DIR = cls.orig_data_dir
+        memory_config.get_memory_dir = cls.orig_get
+        shutil.rmtree(cls.tmp)
+
+    def setUp(self):
+        # Wipe everything except the seed layout between tests.
+        import memory_store
+        for sub in ("_proposals", "_sources"):
+            d = self.mem_path / sub
+            if d.exists():
+                for f in d.glob("*.md"):
+                    f.unlink()
+        # Rewrite seed pages so each test gets a known state.
+        for name, body in {
+            "internal-organization.md": "# Internal organization\n\n_(empty)_\n",
+            "who-is-who.md": "# Who is who\n\n_(empty)_\n",
+            "work-preferences.md": "# Work preferences\n\n_(empty)_\n",
+        }.items():
+            (self.mem_path / name).write_text(body, encoding="utf-8")
+        # Clear the log between tests too.
+        (self.mem_path / "log.md").write_text("", encoding="utf-8")
+
+    def test_list_pages_returns_seed(self):
+        status, body = make_request_port(self.PORT, "GET", "/api/memory/pages")
+        self.assertEqual(status, 200)
+        names = {p["name"] for p in body["pages"]}
+        self.assertEqual(names, {"internal-organization", "who-is-who", "work-preferences"})
+        self.assertIn("INDEX", body["index"])
+
+    def test_get_page_known_and_unknown(self):
+        status, body = make_request_port(self.PORT, "GET", "/api/memory/page/internal-organization")
+        self.assertEqual(status, 200)
+        self.assertIn("Internal organization", body["content"])
+        status, _ = make_request_port(self.PORT, "GET", "/api/memory/page/no-such-page")
+        self.assertEqual(status, 404)
+
+    def test_put_page_writes_and_logs(self):
+        status, body = make_request_port(self.PORT, "PUT", "/api/memory/page/internal-organization",
+                                          {"content": "# hand edited\n"})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["saved"])
+        # Confirm via GET.
+        _, get_body = make_request_port(self.PORT, "GET", "/api/memory/page/internal-organization")
+        self.assertEqual(get_body["content"], "# hand edited\n")
+
+    def test_apply_save_as_source(self):
+        status, body = make_request_port(
+            self.PORT, "POST", "/api/memory/apply",
+            {"operations": [{"op": "save_as_source", "title": "orgchart",
+                             "content": "anna > brent"}]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["applied"]), 1)
+        # Source should be listable.
+        _, listing = make_request_port(self.PORT, "GET", "/api/memory/sources")
+        self.assertEqual(len(listing["sources"]), 1)
+
+    def test_chat_apply_writes_pages_directly(self):
+        # Chat-driven propose_memory_edits applies straight to pages — no
+        # proposal file. Per-edit review happens in the chat panel via
+        # checkboxes before the apply call.
+        op = {
+            "op": "propose_memory_edits", "summary": "from chat",
+            "edits": [
+                {"page": "internal-organization", "action": "replace",
+                 "content": "# org\n\n- anna\n"},
+            ],
+        }
+        status, body = make_request_port(self.PORT, "POST", "/api/memory/apply",
+                                          {"operations": [op]})
+        self.assertEqual(status, 200)
+        self.assertEqual(len(body["applied"]), 1)
+        self.assertTrue(body["applied"][0]["target"].startswith("memory/"))
+        # No proposal file created — chat is the review surface.
+        _, listing = make_request_port(self.PORT, "GET", "/api/memory/proposals")
+        self.assertEqual(listing["proposals"], [])
+        # Page actually got updated.
+        _, page = make_request_port(self.PORT, "GET", "/api/memory/page/internal-organization")
+        self.assertIn("anna", page["content"])
+
+    def test_lint_proposal_review_flow(self):
+        # Lint still uses proposals (no chat surface to host the review).
+        # Simulate by writing a proposal file directly, then exercise
+        # GET /api/memory/proposal/:id and POST /apply.
+        import memory_ops, memory_store
+        body = memory_ops._serialize_proposal("lint pass", [
+            {"page": "internal-organization", "action": "replace",
+             "content": "# org\n\n- anna\n"},
+            {"page": "who-is-who", "action": "replace", "content": "rejected"},
+        ], source="lint")
+        pid = memory_store.write_proposal(body, kind="lint")
+
+        # Fetch full proposal — should include current+proposed for each edit.
+        status, detail = make_request_port(self.PORT, "GET", f"/api/memory/proposal/{pid}")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(detail["edits"]), 2)
+        for e in detail["edits"]:
+            self.assertIn("current", e)
+            self.assertIn("proposed", e)
+
+        # Apply only the first edit; second is dropped.
+        status, applied = make_request_port(
+            self.PORT, "POST", f"/api/memory/proposal/{pid}/apply",
+            {"accepted_indices": [0]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(applied["applied"]), 1)
+        _, page1 = make_request_port(self.PORT, "GET", "/api/memory/page/internal-organization")
+        self.assertIn("anna", page1["content"])
+        _, page2 = make_request_port(self.PORT, "GET", "/api/memory/page/who-is-who")
+        self.assertNotIn("rejected", page2["content"])
+        # Proposal is gone after apply.
+        status, _ = make_request_port(self.PORT, "GET", f"/api/memory/proposal/{pid}")
+        self.assertEqual(status, 404)
+
+    def test_dismiss_proposal_removes_without_writing(self):
+        import memory_ops, memory_store
+        body = memory_ops._serialize_proposal("x", [
+            {"page": "internal-organization", "action": "replace", "content": "X"},
+        ], source="lint")
+        pid = memory_store.write_proposal(body, kind="lint")
+        status, body_resp = make_request_port(self.PORT, "POST", f"/api/memory/proposal/{pid}/dismiss", {})
+        self.assertEqual(status, 200)
+        self.assertTrue(body_resp["dismissed"])
+        _, page = make_request_port(self.PORT, "GET", "/api/memory/page/internal-organization")
+        self.assertNotIn("\nX\n", page["content"])
+
+    def test_ask_apply_routes_mixed_batch(self):
+        # Mixed batch: one memory op + one bogus card op. Memory op should
+        # apply; card op lands in skipped — but we proved memory ops are
+        # actually dispatched (not silently dropped as before).
+        ops = [
+            {"op": "save_as_source", "title": "via-ask", "content": "anna > brent"},
+            {"op": "add_comment", "id": "C-99999", "text": "x"},  # unknown id
+        ]
+        status, body = make_request_port(self.PORT, "POST", "/api/ask/apply", {"operations": ops})
+        self.assertEqual(status, 200)
+        applied_ops = [a["op"] for a in body["applied"]]
+        self.assertIn("save_as_source", applied_ops)
+        # Source should exist on disk.
+        _, listing = make_request_port(self.PORT, "GET", "/api/memory/sources")
+        self.assertTrue(any("via-ask" in s["id"] for s in listing["sources"]))
+
+    def test_get_memory_config_includes_pending_count(self):
+        status, body = make_request_port(self.PORT, "GET", "/api/memory/config")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["pending_proposals"], 0)
+        # Write a lint proposal and re-check.
+        import memory_ops, memory_store
+        raw = memory_ops._serialize_proposal("x", [
+            {"page": "p1", "action": "create", "content": "c"},
+        ], source="lint")
+        memory_store.write_proposal(raw, kind="lint")
+        _, body = make_request_port(self.PORT, "GET", "/api/memory/config")
+        self.assertEqual(body["pending_proposals"], 1)
+
+
 if __name__ == '__main__':
     unittest.main()

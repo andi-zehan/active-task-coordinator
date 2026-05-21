@@ -7,6 +7,8 @@ import json
 import re
 import threading
 
+import memory_context
+
 
 # Thread-local cache so repeated read tools within one request batch don't
 # re-walk every board file. Server is multi-threaded (ThreadingHTTPServer),
@@ -161,6 +163,7 @@ READ_TOOL_DEFS = [
             "required": ["id"],
         },
     },
+    memory_context.READ_MEMORY_TOOL_DEF,
 ]
 
 # --- Write-tool definitions ---
@@ -239,6 +242,58 @@ WRITE_TOOL_DEFS = [
             "type": "object",
             "properties": _op_props_id({"title": {"type": "string"}}),
             "required": ["id", "title", "confidence", "reason"],
+        },
+    },
+    {
+        "name": "save_as_source",
+        "description": (
+            "Propose saving a substantive user-pasted document (org chart, policy, "
+            "stakeholder list, etc.) as an immutable raw source in memory. Use this "
+            "when the user supplies content that should feed the wiki rather than "
+            "be acted on as cards. Queues — does not write."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Short label for the source — used in the filename."},
+                "content": {"type": "string", "description": "The full text to preserve verbatim."},
+                "confidence": {"type": "string", "enum": _CONF_ENUM},
+                "reason": {"type": "string"},
+            },
+            "required": ["title", "content", "confidence", "reason"],
+        },
+    },
+    {
+        "name": "propose_memory_edits",
+        "description": (
+            "Propose changes to one or more memory wiki pages. Each edit either "
+            "creates a new page, replaces a page's full content, or appends to "
+            "the end of a page. Queues for the user's Apply click — the chat "
+            "panel shows per-edit diffs with checkboxes, so the user can drop "
+            "individual edits before applying. There is no separate review "
+            "step in the Memory modal; Apply writes pages directly. Use after "
+            "read_memory_page to ground the proposal in current state."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "1-2 sentence summary of why these edits."},
+                "edits": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "page": {"type": "string", "description": "Page name without .md."},
+                            "action": {"type": "string", "enum": ["create", "replace", "append"]},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["page", "action", "content"],
+                    },
+                },
+                "confidence": {"type": "string", "enum": _CONF_ENUM},
+                "reason": {"type": "string"},
+            },
+            "required": ["summary", "edits", "confidence", "reason"],
         },
     },
 ]
@@ -455,7 +510,12 @@ def _tool_get_card_by_id(args: dict) -> dict:
 _WRITE_OP_NAMES = {
     "create_card", "add_comment", "tick_checklist",
     "add_checklist_item", "move_card", "update_field", "rename_card",
+    "save_as_source", "propose_memory_edits",
 }
+
+# Subset of write ops that target the memory wiki rather than kanban cards.
+# Used by the server to route applies to memory_ops vs. notes.apply_operations.
+MEMORY_WRITE_OP_NAMES = {"save_as_source", "propose_memory_edits"}
 
 
 def _queue_op(name: str, args: dict, queue: list) -> dict:
@@ -474,6 +534,7 @@ READ_TOOLS = {
     "find_by_label": _tool_find_by_label,
     "find_by_assignee": _tool_find_by_assignee,
     "get_card_by_id": _tool_get_card_by_id,
+    "read_memory_page": memory_context.tool_read_memory_page,
 }
 
 
@@ -506,11 +567,19 @@ def _summarize_read_result(name: str, args: dict, payload: dict) -> str:
     if name == "find_by_assignee":
         n = len(payload.get("cards", []))
         return f"{n} card(s) assigned to '{args.get('name', '')}'"
+    if name == "read_memory_page":
+        if "error" in payload:
+            return f"error: {payload['error']}"
+        content = payload.get("content", "")
+        lines = content.count("\n") + (0 if content.endswith("\n") or not content else 1)
+        return f"loaded {args.get('name','?')}.md ({lines} lines)"
     return ""
 
 
 def _queued_summary_fields(name: str, args: dict) -> dict:
     """Fields to surface in a 'queued' event so the UI can show what's been proposed."""
+    if name in MEMORY_WRITE_OP_NAMES:
+        return _memory_op_summary_fields(name, args)
     if name == "create_card":
         return {"board": args.get("board", ""), "list": args.get("list", ""),
                 "title": args.get("title", "")}
@@ -538,3 +607,19 @@ def _queued_summary_fields(name: str, args: dict) -> dict:
     elif name == "rename_card":
         base["new_title"] = args.get("title", "")
     return base
+
+
+def _memory_op_summary_fields(name: str, args: dict) -> dict:
+    """Shape of a 'queued' event for memory write ops (no card to resolve)."""
+    if name == "save_as_source":
+        return {
+            "title": args.get("title", ""),
+            "content_lines": (args.get("content", "") or "").count("\n") + 1,
+        }
+    if name == "propose_memory_edits":
+        return {
+            "summary": args.get("summary", ""),
+            "edit_count": len(args.get("edits", []) or []),
+            "pages": [e.get("page", "") for e in (args.get("edits", []) or [])],
+        }
+    return {}

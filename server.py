@@ -19,6 +19,10 @@ import janitor
 import sync_config
 import data_repo
 import app_config
+import memory_config
+import memory_lint
+import memory_ops
+import memory_store
 
 
 def _resolve_data_dir() -> Path:
@@ -43,6 +47,43 @@ def _resolve_data_dir() -> Path:
 
 DATA_DIR = _resolve_data_dir()
 LISTS = ["ideas", "backlog", "in-progress", "done"]
+
+
+def _apply_mixed(operations, note_id):
+    """Run a possibly-mixed batch of card + memory ops.
+
+    Splits memory ops out (chat_tools.MEMORY_WRITE_OP_NAMES) so each subset
+    goes to the right handler — notes.apply_operations for cards,
+    memory_ops.apply_memory_operations for memory. Merges the results so
+    the client sees a single applied/skipped pair, preserving op order.
+    """
+    card_ops, mem_ops = memory_ops.split_memory_ops(operations)
+    card_result = notes.apply_operations(card_ops, note_id) if card_ops else {"applied": [], "skipped": []}
+    mem_result  = memory_ops.apply_memory_operations(mem_ops) if mem_ops else {"applied": [], "skipped": []}
+    return {
+        "applied": card_result["applied"] + mem_result["applied"],
+        "skipped": card_result["skipped"] + mem_result["skipped"],
+    }
+
+
+def _proposed_after_edit(current: str | None, edit: dict) -> str:
+    """Materialize what a wiki page would look like after a proposed edit.
+
+    Used by the proposal review UI to render a diff against the page's
+    current content. Mirrors memory_ops._apply_edit semantics but doesn't
+    write anything.
+    """
+    action = edit.get("action", "")
+    content = edit.get("content", "")
+    if action == "create":
+        return content
+    if action == "replace":
+        return content
+    if action == "append":
+        base = current or ""
+        sep = "" if base.endswith("\n") or not base else "\n"
+        return base + sep + content
+    return content
 
 
 def bucket_cards_by_due(cards, today=None):
@@ -670,6 +711,57 @@ class RequestHandler(BaseHTTPRequestHandler):
         # /api/janitor/run
         if path == '/api/janitor/run' and method == 'POST':
             return self._handle_janitor_run()
+
+        # /api/memory/config
+        if path == '/api/memory/config' and method == 'GET':
+            return self._handle_get_memory_config()
+        if path == '/api/memory/config' and method == 'PUT':
+            return self._handle_put_memory_config()
+
+        # /api/memory/apply
+        if path == '/api/memory/apply' and method == 'POST':
+            return self._handle_memory_apply()
+
+        # /api/memory/pages
+        if path == '/api/memory/pages' and method == 'GET':
+            return self._handle_memory_list_pages()
+
+        # /api/memory/page/:name
+        m = re.match(r'^/api/memory/page/([A-Za-z0-9][A-Za-z0-9._-]*)$', path)
+        if m:
+            page_name = m.group(1)
+            if method == 'GET':
+                return self._handle_memory_get_page(page_name)
+            if method == 'PUT':
+                return self._handle_memory_put_page(page_name)
+
+        # /api/memory/sources
+        if path == '/api/memory/sources' and method == 'GET':
+            return self._handle_memory_list_sources()
+        m = re.match(r'^/api/memory/source/([A-Za-z0-9][A-Za-z0-9._-]*)$', path)
+        if m and method == 'GET':
+            return self._handle_memory_get_source(m.group(1))
+
+        # /api/memory/proposals
+        if path == '/api/memory/proposals' and method == 'GET':
+            return self._handle_memory_list_proposals()
+
+        # /api/memory/lint (manual trigger)
+        if path == '/api/memory/lint' and method == 'POST':
+            return self._handle_memory_lint()
+        if path == '/api/memory/lint/status' and method == 'GET':
+            return self._handle_memory_lint_status()
+
+        # /api/memory/proposal/:id (+ /apply, /dismiss)
+        m = re.match(r'^/api/memory/proposal/([A-Za-z0-9][A-Za-z0-9._-]*)$', path)
+        if m and method == 'GET':
+            return self._handle_memory_get_proposal(m.group(1))
+        m = re.match(r'^/api/memory/proposal/([A-Za-z0-9][A-Za-z0-9._-]*)/apply$', path)
+        if m and method == 'POST':
+            return self._handle_memory_apply_proposal(m.group(1))
+        m = re.match(r'^/api/memory/proposal/([A-Za-z0-9][A-Za-z0-9._-]*)/dismiss$', path)
+        if m and method == 'POST':
+            return self._handle_memory_dismiss_proposal(m.group(1))
 
         # Static files (GET only)
         if method == 'GET':
@@ -1394,8 +1486,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 pass
 
     def _handle_ask_apply(self):
-        """Apply queued ops from an Ask conversation. Same shape as
-        /api/notes/apply with note_id=None — reuses notes.apply_operations."""
+        """Apply queued ops from an Ask conversation.
+
+        Ops may mix card-targeting and memory-targeting tools — split them and
+        dispatch each subset to its handler, then merge the results.
+        """
         try:
             body = self._read_body()
         except json.JSONDecodeError:
@@ -1403,8 +1498,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         operations = body.get('operations', [])
         if not isinstance(operations, list):
             return self._send_error(400, 'operations list required')
-        result = notes.apply_operations(operations, None)
-        self._send_json(result)
+        self._send_json(_apply_mixed(operations, note_id=None))
 
     def _handle_notes_apply(self):
         try:
@@ -1416,8 +1510,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         operations = body.get('operations', [])
         if not isinstance(operations, list):
             return self._send_error(400, 'operations list required')
-        result = notes.apply_operations(operations, note_id)
-        self._send_json(result)
+        self._send_json(_apply_mixed(operations, note_id=note_id))
 
     def _handle_briefing_generate(self):
         """Stream the briefing tool-use loop as Server-Sent Events."""
@@ -1523,8 +1616,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         operations = body.get('operations', [])
         if not isinstance(operations, list):
             return self._send_error(400, 'operations list required')
-        result = briefing.apply_operations(operations)
-        self._send_json(result)
+        self._send_json(_apply_mixed(operations, note_id=None))
 
     def _handle_get_note(self, note_id):
         text = notes.read_note(note_id)
@@ -1541,6 +1633,212 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _handle_janitor_run(self):
         result = janitor.run_all()
         self._send_json(result)
+
+    # ── memory handlers ──────────────────────────────────────────────
+
+    def _handle_get_memory_config(self):
+        view = memory_config.public_view()
+        view["pending_proposals"] = len(memory_store.list_proposals())
+        self._send_json(view)
+
+    def _handle_put_memory_config(self):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        if not isinstance(body, dict):
+            return self._send_error(400, 'expected object')
+        updates = memory_config.sanitize_user_updates(body)
+        try:
+            memory_config.validate(updates)
+        except memory_config.ValidationError as e:
+            return self._send_error(400, str(e))
+        memory_config.save(updates)
+        # If the memory_dir was changed, seed it now so the UI sees pages
+        # immediately on the next request.
+        if "memory_dir" in updates:
+            memory_store.init_if_missing()
+        self._send_json(memory_config.public_view())
+
+    def _handle_memory_apply(self):
+        """Apply queued memory ops (save_as_source, propose_memory_edits).
+
+        Body: {"operations": [...]}. Same shape as /api/notes/apply but
+        routes through memory_ops instead of notes.apply_operations.
+        """
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        operations = body.get('operations', [])
+        if not isinstance(operations, list):
+            return self._send_error(400, 'operations list required')
+        result = memory_ops.apply_memory_operations(operations)
+        self._send_json(result)
+
+    def _handle_memory_list_pages(self):
+        pages = memory_store.list_pages()
+        self._send_json({
+            "pages": pages,
+            "index": memory_store.read_index(),
+            "readme": memory_store.read_readme(),
+        })
+
+    def _handle_memory_get_page(self, name):
+        try:
+            content = memory_store.read_page(name)
+        except memory_store.InvalidSlug as e:
+            return self._send_error(400, str(e))
+        if content is None:
+            return self._send_error(404, f"page '{name}' not found")
+        self._send_json({"name": name, "content": content})
+
+    def _handle_memory_put_page(self, name):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        if not isinstance(body, dict):
+            return self._send_error(400, 'expected object')
+        content = body.get("content", "")
+        if not isinstance(content, str):
+            return self._send_error(400, 'content must be a string')
+        try:
+            memory_ops.manual_write_page(name, content)
+        except memory_store.InvalidSlug as e:
+            return self._send_error(400, str(e))
+        self._send_json({"name": name, "saved": True})
+
+    def _handle_memory_list_sources(self):
+        self._send_json({"sources": memory_store.list_sources()})
+
+    def _handle_memory_get_source(self, source_id):
+        try:
+            content = memory_store.read_source(source_id)
+        except memory_store.InvalidSlug as e:
+            return self._send_error(400, str(e))
+        if content is None:
+            return self._send_error(404, f"source '{source_id}' not found")
+        self._send_json({"id": source_id, "content": content})
+
+    def _handle_memory_list_proposals(self):
+        out = []
+        for p in memory_store.list_proposals():
+            raw = memory_store.read_proposal(p["id"])
+            parsed = memory_ops.parse_proposal(raw) if raw else None
+            entry = {"id": p["id"], "mtime": p["mtime"]}
+            if parsed:
+                entry["summary"] = parsed.get("summary", "")
+                entry["source"] = parsed.get("source", "")
+                entry["edits"] = [
+                    {"page": e.get("page", ""), "action": e.get("action", "")}
+                    for e in parsed.get("edits", []) or []
+                ]
+            out.append(entry)
+        self._send_json({"proposals": out})
+
+    def _handle_memory_get_proposal(self, proposal_id):
+        try:
+            raw = memory_store.read_proposal(proposal_id)
+        except memory_store.InvalidSlug as e:
+            return self._send_error(400, str(e))
+        if raw is None:
+            return self._send_error(404, f"proposal '{proposal_id}' not found")
+        parsed = memory_ops.parse_proposal(raw) or {}
+        # Pair each edit with the current page content so the UI can render a diff.
+        diffs = []
+        for e in parsed.get("edits", []) or []:
+            page = e.get("page", "")
+            try:
+                current = memory_store.read_page(page)
+            except memory_store.InvalidSlug:
+                current = None
+            diffs.append({
+                "page": page,
+                "action": e.get("action", ""),
+                "current": current or "",
+                "proposed": _proposed_after_edit(current, e),
+                "raw_edit_content": e.get("content", ""),
+            })
+        self._send_json({
+            "id": proposal_id,
+            "summary": parsed.get("summary", ""),
+            "source": parsed.get("source", ""),
+            "edits": diffs,
+            "raw": raw,
+        })
+
+    def _handle_memory_apply_proposal(self, proposal_id):
+        try:
+            body = self._read_body()
+        except json.JSONDecodeError:
+            return self._send_error(400, 'invalid json')
+        accepted = body.get("accepted_indices", [])
+        overrides = body.get("edit_overrides", {})
+        if not isinstance(accepted, list):
+            return self._send_error(400, 'accepted_indices must be a list')
+        if not isinstance(overrides, dict):
+            return self._send_error(400, 'edit_overrides must be an object')
+        try:
+            result = memory_ops.apply_proposal(proposal_id, accepted, overrides)
+        except ValueError as e:
+            return self._send_error(404, str(e))
+        self._send_json(result)
+
+    def _handle_memory_lint(self):
+        """Run a lint pass, streaming SSE events. Same event shape as memory_lint.lint_stream."""
+        try:
+            client = llm_config.get_client()
+        except llm_config.NotConfigured:
+            return self._send_error(400, 'LLM not configured')
+        cfg = llm_config.load()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+
+        def emit(event):
+            line = f"data: {json.dumps(event)}\n\n".encode('utf-8')
+            try:
+                self.wfile.write(line)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                raise
+
+        try:
+            for event in memory_lint.lint_stream(model=cfg['model'], client=client):
+                emit(event)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                emit({"type": "error", "message": str(e)})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    def _handle_memory_lint_status(self):
+        """Report last lint marker + skip-reason if applicable."""
+        run, reason = memory_lint.should_run()
+        fp = memory_lint._read_last_fingerprint()
+        self._send_json({
+            "would_run": run,
+            "reason": reason,
+            "last_fingerprint": fp,
+            "pending_proposals": len(memory_store.list_proposals()),
+        })
+
+    def _handle_memory_dismiss_proposal(self, proposal_id):
+        try:
+            ok = memory_ops.dismiss_proposal(proposal_id)
+        except memory_store.InvalidSlug as e:
+            return self._send_error(400, str(e))
+        if not ok:
+            return self._send_error(404, f"proposal '{proposal_id}' not found")
+        self._send_json({"id": proposal_id, "dismissed": True})
 
 if __name__ == '__main__':
     # First-run migration: derive default config from existing data/ state.
@@ -1571,6 +1869,15 @@ if __name__ == '__main__':
             sync_config.set_skip_next_pull(False)
 
     ensure_data_dir()
+
+    # Initialize the memory wiki on first run (idempotent).
+    try:
+        created = memory_store.init_if_missing()
+        if created:
+            print(f"memory: seeded {memory_config.get_memory_dir()}", flush=True)
+    except Exception as e:
+        print(f"memory: init failed: {e}", flush=True)
+
     # Run janitor once on startup, then every 24 hours in a background thread
     try:
         janitor.run_all()
@@ -1586,8 +1893,39 @@ if __name__ == '__main__':
             except Exception as e:
                 print(f"janitor: periodic sweep failed: {e}", flush=True)
 
+    def _periodic_memory_lint():
+        """Run memory lint on cadence. Honors skip gates; lazy LLM client.
+
+        Sleeps interval_hours between attempts. If LLM is not configured or
+        the lint can't run for any reason, log and continue — never crash
+        the thread.
+        """
+        import time
+        while True:
+            try:
+                interval = max(1, memory_config.load()["lint_interval_hours"])
+            except Exception:
+                interval = 1
+            time.sleep(interval * 60 * 60)
+            run, reason = memory_lint.should_run()
+            if not run:
+                print(f"memory_lint: skip — {reason}", flush=True)
+                continue
+            try:
+                client = llm_config.get_client()
+            except llm_config.NotConfigured:
+                print("memory_lint: LLM not configured, skipping", flush=True)
+                continue
+            try:
+                cfg = llm_config.load()
+                result = memory_lint.run_lint(model=cfg['model'], client=client)
+                print(f"memory_lint: {result.get('type')} — {result}", flush=True)
+            except Exception as e:
+                print(f"memory_lint: periodic run failed: {e}", flush=True)
+
     import threading
     threading.Thread(target=_periodic_janitor, daemon=True).start()
+    threading.Thread(target=_periodic_memory_lint, daemon=True).start()
     server = ThreadingHTTPServer(('0.0.0.0', 8080), RequestHandler)
     print("Kanban server running on http://localhost:8080")
     server.serve_forever()

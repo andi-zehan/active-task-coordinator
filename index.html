@@ -1303,6 +1303,306 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 .modal-overlay.modal-floating .modal[data-modal-id="new-card"] { width: 420px; }
 .modal-overlay.modal-floating .modal[data-modal-id="settings"] { width: 480px; }
+/* ── Memory view ──────────────────────────────────────────────── */
+.view-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  background: #de350b;
+  color: #fff;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.memory-view {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 110px);
+  background: #fafbfc;
+}
+.memory-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid #ebecf0;
+}
+.memory-view-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #5e6c84;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.memory-view-tab:hover { background: #f4f5f7; color: #172b4d; }
+.memory-view-tab.active {
+  background: #deebff;
+  color: #0747a6;
+  font-weight: 600;
+}
+.memory-view-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+.memory-empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b778c;
+  font-size: 13px;
+}
+
+/* Pages tab */
+.memory-pages-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 14px;
+  height: 100%;
+}
+.memory-pages-rail {
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-radius: 6px;
+  padding: 6px;
+  overflow-y: auto;
+}
+.memory-page-rail-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #172b4d;
+  cursor: pointer;
+  text-align: left;
+}
+.memory-page-rail-item:hover { background: #f4f5f7; }
+.memory-page-rail-item.active { background: #deebff; color: #0747a6; font-weight: 600; }
+.memory-page-rail-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.memory-page-rail-meta { color: #6b778c; font-size: 11px; font-variant-numeric: tabular-nums; }
+.memory-pages-main {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.memory-page-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #ebecf0;
+  background: #fafbfc;
+}
+.memory-page-editor-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #172b4d;
+}
+.memory-page-editor-dirty {
+  color: #de350b;
+  font-size: 11px;
+  font-weight: 600;
+}
+.memory-page-editor-status {
+  color: #6b778c;
+  font-size: 12px;
+}
+.memory-page-editor-main {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 14px 16px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  background: #fff;
+  color: #172b4d;
+}
+
+/* Proposals tab */
+.memory-proposals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.memory-proposal-card {
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-left: 3px solid #5243aa;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.memory-proposal-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.memory-proposal-card-header:hover { background: #f4f5f7; }
+.memory-proposal-card-kind {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: #5e6c84;
+  background: #ebecf0;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.memory-proposal-card-summary {
+  flex: 1;
+  font-size: 13px;
+  color: #172b4d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.memory-proposal-card-meta { font-size: 11px; color: #6b778c; }
+.memory-proposal-expand {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  color: #5e6c84;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.memory-proposal-card-body {
+  padding: 12px 14px;
+  border-top: 1px solid #ebecf0;
+  background: #fafbfc;
+}
+.memory-proposal-edits { display: flex; flex-direction: column; gap: 12px; }
+.memory-edit-block {
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.memory-edit-block-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f4f5f7;
+  border-bottom: 1px solid #ebecf0;
+  font-size: 13px;
+}
+.memory-edit-block-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.memory-edit-action {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  background: #dfe1e6;
+  color: #5e6c84;
+}
+.memory-edit-action.create { background: #e3fcef; color: #006644; }
+.memory-edit-action.replace { background: #fff7e6; color: #974f00; }
+.memory-edit-action.append  { background: #deebff; color: #0747a6; }
+.memory-edit-show-current {
+  background: transparent;
+  border: 1px solid #dfe1e6;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: #5e6c84;
+  cursor: pointer;
+}
+.memory-edit-show-current:hover { background: #ebecf0; }
+.memory-edit-current {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ebecf0;
+  background: #fafbfc;
+}
+.memory-edit-current h5 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #6b778c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.memory-edit-current pre {
+  margin: 0;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  color: #5e6c84;
+}
+.memory-edit-textarea {
+  width: 100%;
+  min-height: 180px;
+  max-height: 480px;
+  border: none;
+  outline: none;
+  padding: 10px 12px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+  background: #fff;
+  color: #172b4d;
+}
+.memory-proposal-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.memory-proposal-status { font-size: 12px; color: #6b778c; }
+
+.dash-memory-tile {
+  background: #fff;
+  border: 1px solid #ebecf0;
+  border-left: 3px solid #5243aa;
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.dash-memory-tile:hover { background: #f4f5f7; }
+.dash-memory-tile-count {
+  background: #5243aa;
+  color: #fff;
+  border-radius: 12px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
 .modal-drag-handle {
   display: flex;
   align-items: center;
@@ -1866,6 +2166,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
     <button data-view="dashboard">Timeline</button>
     <button data-view="calendar">Calendar</button>
     <button data-view="table">Table</button>
+    <button data-view="memory">&#129504; Memory<span id="view-tab-memory-badge" class="view-tab-badge" hidden></span></button>
   </div>
   <div class="spacer"></div>
   <button class="header-btn icon-btn" id="btn-undo" disabled aria-label="Undo">
@@ -1917,6 +2218,12 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 </div>
 <div class="view-container" id="view-table">
   <div class="table-view" id="table-content"></div>
+</div>
+<div class="view-container" id="view-memory">
+  <div class="memory-view">
+    <div class="memory-view-tabs" id="memory-view-tabs"></div>
+    <div class="memory-view-body" id="memory-view-body"></div>
+  </div>
 </div>
 
 <aside id="chat-sidebar" hidden>
@@ -2948,6 +3255,7 @@ async function refreshCurrentView() {
     case 'dashboard': await renderDashboard(); break;
     case 'calendar': await renderCalendar(); break;
     case 'table': await renderTable(); break;
+    case 'memory': await MemoryUI.enterView(); break;
   }
   if (state.modalCard) flashSaved();
 }
@@ -3548,13 +3856,35 @@ async function renderDashboard() {
     return html;
   }
 
+  // Memory-proposals tile — visible only when something is pending. The
+  // count is filled in async (MemoryUI.refreshBadge), so the tile starts
+  // hidden and shows itself when there's anything to review.
+  const memoryTileHtml = `
+    <div class="dash-memory-tile" id="dash-memory-tile" style="display:none;">
+      <span>🧠 Memory: <strong><span id="dash-memory-tile-count">0</span></strong> proposal(s) pending review</span>
+      <span class="dash-memory-tile-count">Review →</span>
+    </div>`;
+
   container.innerHTML =
+    memoryTileHtml +
     renderSection('Overdue',   'overdue',   'overdue',   data.overdue || []) +
     renderSection('Today',     'today',     'today',     data.today || []) +
     renderSection('This Week', 'week',      'this_week', data.this_week || []) +
     renderSection('Next Week', 'next-week', 'next_week', data.next_week || []) +
     renderSection('Later',     'later',     'later',     data.later || []) +
     renderSection('Someday',   'someday',   'someday',   data.someday || []);
+
+  const memoryTile = container.querySelector('#dash-memory-tile');
+  if (memoryTile) {
+    memoryTile.addEventListener('click', () => {
+      switchView('memory');
+      // The view's enterView() runs via refreshCurrentView; queue the tab
+      // jump after so it overrides the default 'pages' tab.
+      setTimeout(() => MemoryUI.enterView({ tab: 'proposals' }), 0);
+    });
+  }
+  // Sync the tile with the current badge count (set in MemoryUI poll).
+  MemoryUI.refreshBadge();
 
   container.querySelectorAll('.dash-card').forEach(el => {
     el.addEventListener('click', () => {
@@ -5163,6 +5493,45 @@ function renderOpDetails(op) {
   } else if (op.op === 'update_field') {
     if (op.field) parts.push(field('Field', escHtml(op.field)));
     if (op.value !== undefined) parts.push(field('New value', escHtml(JSON.stringify(op.value))));
+  } else if (op.op === 'save_as_source') {
+    if (op.title) parts.push(field('Title', escHtml(op.title)));
+    if (op.content) {
+      const preview = op.content.length > 400 ? op.content.slice(0, 400) + '\n…' : op.content;
+      parts.push(field('Content', `<pre>${escHtml(preview)}</pre>`));
+    }
+  } else if (op.op === 'propose_memory_edits') {
+    if (op.summary) parts.push(field('Summary', escHtml(op.summary)));
+    if (Array.isArray(op.edits) && op.edits.length) {
+      // Per-edit diff + checkbox. Apply writes pages directly (no second
+      // review hop in the Memory modal), so this is the user's only chance
+      // to drop individual edits before they land. Mirrors the create_card
+      // checklist pattern — onclick=stopPropagation prevents nested-label
+      // misrouting (the row already wraps in a <label>).
+      const items = op.edits.map((e, k) => {
+        const action = e.action || '?';
+        const page = e.page || '?';
+        const proposed = e.content || '';
+        // We don't know the current page content client-side; render a
+        // "Proposed" pane only. The op-row "preview" lists which pages are
+        // being changed; the diff per se is shown on the proposal review
+        // pane (Memory modal → lint proposal). For inline-from-chat edits,
+        // the user accepts the proposed content as-is.
+        return `
+          <li style="list-style:none;margin-bottom:8px;border:1px solid #ebecf0;border-radius:4px;background:#fff;">
+            <div style="padding:6px 10px;border-bottom:1px solid #ebecf0;background:#f4f5f7;display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" data-keep-edit-i="${k}" checked
+                onclick="event.stopPropagation();" style="margin:0;" />
+              <strong>${escHtml(action)}</strong>
+              <code>${escHtml(page)}.md</code>
+              <span style="margin-left:auto;color:#6b778c;font-size:11px;">${proposed.length} chars</span>
+            </div>
+            <pre style="margin:0;padding:8px 10px;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow-y:auto;">${escHtml(proposed)}</pre>
+          </li>
+        `;
+      }).join('');
+      parts.push(field('Edits',
+        `<ul style="margin:6px 0 0;padding:0;">${items}</ul>`));
+    }
   }
   if (!parts.length) return '';
   return `<div class="op-details">${parts.join('')}</div>`;
@@ -5172,7 +5541,12 @@ function renderOpDetails(op) {
 function renderOpRowHtml(op, i) {
   const checked = op.confidence !== 'low' ? 'checked' : '';
   let target;
-  if (op.id) {
+  if (op.op === 'save_as_source') {
+    target = 'memory · _sources/';
+  } else if (op.op === 'propose_memory_edits') {
+    const pages = (op.edits || []).map(e => e.page).filter(Boolean);
+    target = pages.length ? `memory · ${pages.join(', ')}` : 'memory wiki';
+  } else if (op.id) {
     // id-based ops: use id from state.idIndex
     const title = state.idIndex && state.idIndex.get(op.id) ? state.idIndex.get(op.id).title : '';
     target = title ? `${op.id}: ${escHtml(title)}` : op.id;
@@ -5189,6 +5563,8 @@ function renderOpRowHtml(op, i) {
                  : op.op === 'add_checklist_item' ? `add "${escHtml(op.item || '')}"`
                  : op.op === 'move_card'          ? `→ ${escHtml(op.target_list || '')}`
                  : op.op === 'update_field'       ? `${escHtml(op.field || '')} = ${escHtml(JSON.stringify(op.value))}`
+                 : op.op === 'save_as_source'    ? `"${escHtml(op.title || 'untitled')}" (${(op.content || '').length} chars)`
+                 : op.op === 'propose_memory_edits' ? `${(op.edits || []).length} edit(s): ${escHtml((op.summary || '').slice(0, 80))}`
                  : '';
   return `
     <label>
@@ -5235,6 +5611,15 @@ function collectSelectedOps(container, allOps) {
         if (b.checked) keptItems.push(op.checklist[parseInt(b.dataset.keepI, 10)]);
       });
       out.push({ ...op, checklist: keptItems });
+    } else if (op.op === 'propose_memory_edits' && Array.isArray(op.edits) && op.edits.length) {
+      // Per-edit checkboxes — drop any the user unchecked. If they unchecked
+      // all of them, skip the op entirely (apply with zero edits would error).
+      const keepBoxes = row.querySelectorAll('input[type=checkbox][data-keep-edit-i]');
+      const keptEdits = [];
+      keepBoxes.forEach(b => {
+        if (b.checked) keptEdits.push(op.edits[parseInt(b.dataset.keepEditI, 10)]);
+      });
+      if (keptEdits.length) out.push({ ...op, edits: keptEdits });
     } else {
       out.push(op);
     }
@@ -5310,6 +5695,13 @@ function describeAppliedOp(applied) {
 
 // Compact one-line description of a queued op for the refine context block.
 function describePendingOp(op) {
+  if (op.op === 'save_as_source') {
+    return `save_as_source "${op.title || 'untitled'}" (${(op.content || '').length} chars)`;
+  }
+  if (op.op === 'propose_memory_edits') {
+    const pages = (op.edits || []).map(e => `${e.action}:${e.page}`).join(', ');
+    return `propose_memory_edits "${(op.summary || '').slice(0, 80)}" — ${pages}`;
+  }
   if (op.op === 'create_card') {
     const path = `${op.board || '?'}/${op.list || '?'}`;
     return `create_card "${op.title || ''}" → ${path} (assignee=${op.assignee || '–'}, due=${op.due || '–'})`;
@@ -5467,7 +5859,6 @@ const askState = {
   context: null,           // {type:'view',view:...} | {type:'card',id:...}
   contextLabel: '',        // human label for the modal subtitle
   messages: [],            // Anthropic history (seeded by /api/ask/start)
-  pendingByTurn: {},       // turnIndex → list of unapplied ops
   pendingApplyNote: '',    // prefix to prepend to next user message
   inflight: false,
   turnCounter: 0,
@@ -5490,7 +5881,6 @@ function resetAskState(context, label) {
   askState.context = context;
   askState.contextLabel = label;
   askState.messages = [];
-  askState.pendingByTurn = {};
   askState.pendingApplyNote = '';
   askState.inflight = false;
   askState.turnCounter = 0;
@@ -5525,6 +5915,7 @@ function _askPinnedContextLabel() {
   if (!ctx) return '';
   if (ctx.type === 'view') return `all cards in ${ctx.view || 'this view'}`;
   if (ctx.type === 'card') return _idWithTitle(ctx.id);
+  if (ctx.type === 'memory') return 'memory wiki';
   return '';
 }
 function askRenderUser(text) {
@@ -5567,15 +5958,25 @@ function askAppendError(bubble, message) {
   _askScroll();
 }
 
-/* ---- Per-turn ops panel (reuses renderOpRowHtml / collectSelectedOps) ---- */
+/* ---- Per-turn ops panel (reuses renderOpRowHtml / collectSelectedOps) ----
 
-function askRenderOpsPanel(bubble, turnIndex) {
-  const ops = askState.pendingByTurn[turnIndex] || [];
-  let panel = bubble.querySelector('.chat-ops-panel');
+   A single agent turn can produce multiple LLM round-trips, and the user
+   can Apply between them. To keep already-applied results visible while
+   still showing an Apply button for ops that arrive AFTER an apply, each
+   panel is "sealed" when applied and the next queued event opens a fresh
+   panel below it. Each panel owns its own ops list (panel._ops) — this
+   replaces the older single-panel-per-turn model that broke when the
+   second round-trip's ops landed in a sealed panel.
+*/
+
+function askRenderOpsPanel(bubble, turnIndex, op) {
+  // Find the live (unsealed) panel for this turn; create one if needed.
+  let panel = bubble.querySelector('.chat-ops-panel:not(.applied)');
   if (!panel) {
     panel = document.createElement('div');
     panel.className = 'chat-ops-panel';
     panel.dataset.turnIndex = String(turnIndex);
+    panel._ops = [];
     panel.innerHTML = `
       <div class="panel-title">Proposed changes (<span class="ask-ops-count">0</span>)</div>
       <div class="ask-ops-rows"></div>
@@ -5586,17 +5987,17 @@ function askRenderOpsPanel(bubble, turnIndex) {
     `;
     bubble.querySelector('.chat-ops').appendChild(panel);
     panel.querySelector('.ask-ops-apply').addEventListener('click', () => {
-      askApplyOpsForTurn(bubble, turnIndex);
+      askApplyOpsForPanel(panel);
     });
   }
-  panel.querySelector('.ask-ops-count').textContent = ops.length;
-  renderOpsRows(ops, panel.querySelector('.ask-ops-rows'));
+  if (op) panel._ops.push(op);
+  panel.querySelector('.ask-ops-count').textContent = panel._ops.length;
+  renderOpsRows(panel._ops, panel.querySelector('.ask-ops-rows'));
 }
 
-async function askApplyOpsForTurn(bubble, turnIndex) {
-  const panel = bubble.querySelector('.chat-ops-panel');
+async function askApplyOpsForPanel(panel) {
   if (!panel) return;
-  const allOps = askState.pendingByTurn[turnIndex] || [];
+  const allOps = panel._ops || [];
   const selected = collectSelectedOps(panel.querySelector('.ask-ops-rows'), allOps);
   if (!selected.length) return;
 
@@ -5604,19 +6005,23 @@ async function askApplyOpsForTurn(bubble, turnIndex) {
   applyBtn.disabled = true;
   applyBtn.innerHTML = '<span class="spinner" style="border-color:#fff5;border-top-color:#fff;"></span> Applying…';
 
+  const bubble = panel.closest('.chat-msg-assistant');
   let result;
   try {
     result = await api.post('/api/ask/apply', { operations: selected });
   } catch (err) {
     applyBtn.disabled = false;
     applyBtn.textContent = 'Apply';
-    askAppendError(bubble, 'Apply failed: ' + err.message);
+    if (bubble) askAppendError(bubble, 'Apply failed: ' + err.message);
     return;
   }
   recordAgentMovesFromApply(selected, result);
 
   const applied = result.applied || [];
   const skipped = result.skipped || [];
+  // Seal this panel — askRenderOpsPanel uses `:not(.applied)` to decide
+  // whether to open a fresh panel for ops that arrive after this point
+  // (e.g. when the agent does a second LLM round-trip in the same turn).
   panel.classList.add('applied');
   panel.querySelector('.ask-ops-rows').innerHTML =
     `<div style="font-size:12px;color:#172b4d;">✓ Applied ${applied.length} of ${selected.length}` +
@@ -5632,7 +6037,6 @@ async function askApplyOpsForTurn(bubble, turnIndex) {
     askState.pendingApplyNote = askState.pendingApplyNote
       ? askState.pendingApplyNote + ' ' + note : note;
   }
-  delete askState.pendingByTurn[turnIndex];
   if (typeof refreshCurrentView === 'function') refreshCurrentView();
   // If a card modal is open behind the Ask modal, reload it from disk so any
   // applied add_comment / tick_checklist / rename / etc. is reflected.
@@ -5757,9 +6161,9 @@ async function askSendMessage(opts) {
         askState.messages.push(ev.message);
         break;
       case 'queued':
-        if (!askState.pendingByTurn[turnIndex]) askState.pendingByTurn[turnIndex] = [];
-        askState.pendingByTurn[turnIndex].push({ op: ev.op, ...(ev.args || {}) });
-        askRenderOpsPanel(bubble, turnIndex);
+        // Each panel owns its own ops list (panel._ops). If the previous
+        // panel was already applied (sealed), this opens a fresh one.
+        askRenderOpsPanel(bubble, turnIndex, { op: ev.op, ...(ev.args || {}) });
         break;
       case 'text':     askAppendText(bubble, ev.text); break;
       case 'done':     finishAgentStatus(agentHost, 'Done'); break;
@@ -6574,6 +6978,453 @@ FloatingModals.init();
 FloatingModals.registerCloser('modal-overlay', () => closeModal());
 FloatingModals.registerCloser('settings-overlay', () => closeSettings());
 
+// ── Memory wiki UI (first-class view) ─────────────────────────────
+// "Memory" is a top-level view alongside Kanban / Dashboard / Calendar /
+// Table, with two internal tabs: Pages (left rail + editor) and Proposals
+// (full-width list with per-edit textareas the user can tweak before apply).
+// Dashboard tile and view-tab badge both render the pending-proposal count.
+const MemoryUI = (() => {
+  const $ = (id) => document.getElementById(id);
+
+  let activeTab = 'pages';        // 'pages' | 'proposals'
+  let pages = [];                  // [{name, size_lines, mtime}, ...]
+  let currentPageName = null;
+  let originalPageContent = '';
+  let pendingCount = 0;
+
+  // --- Badge sync ---
+
+  function setBadge(n) {
+    pendingCount = n;
+    // View tab header
+    const tabBadge = $('view-tab-memory-badge');
+    if (tabBadge) {
+      if (n > 0) { tabBadge.textContent = String(n); tabBadge.hidden = false; }
+      else       { tabBadge.textContent = '';        tabBadge.hidden = true; }
+    }
+    // Dashboard tile
+    const tile = $('dash-memory-tile');
+    if (tile) {
+      if (n > 0) {
+        tile.style.display = 'flex';
+        const count = $('dash-memory-tile-count');
+        if (count) count.textContent = String(n);
+      } else {
+        tile.style.display = 'none';
+      }
+    }
+    // Tab badge inside the Memory view
+    const inViewBadge = $('memory-view-tab-proposals-count');
+    if (inViewBadge) inViewBadge.textContent = n > 0 ? ` (${n})` : '';
+  }
+
+  async function refreshBadge() {
+    try {
+      const cfg = await api.get('/api/memory/config');
+      setBadge(cfg.pending_proposals || 0);
+    } catch (_) { /* ignore — memory may not be initialized yet */ }
+  }
+
+  // --- View entry ---
+
+  async function enterView(opts) {
+    // opts: { tab: 'pages' | 'proposals' } — used by dashboard tile to jump
+    // straight to the proposal list.
+    if (opts && opts.tab) activeTab = opts.tab;
+    renderTabs();
+    await Promise.all([loadPages(), loadProposalsBadge()]);
+    if (activeTab === 'pages') await renderPagesTab();
+    else                       await renderProposalsTab();
+  }
+
+  function renderTabs() {
+    const tabs = $('memory-view-tabs');
+    if (!tabs) return;
+    tabs.innerHTML = `
+      <button class="memory-view-tab ${activeTab === 'pages' ? 'active' : ''}" data-tab="pages">Pages</button>
+      <button class="memory-view-tab ${activeTab === 'proposals' ? 'active' : ''}" data-tab="proposals">
+        Proposals<span id="memory-view-tab-proposals-count">${pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
+      </button>
+      <span style="flex:1;"></span>
+      <button class="header-btn" id="memory-view-btn-lint" title="Run a lint pass now">Run lint now</button>
+      <button class="btn-new-card" id="memory-view-btn-ask" title="Open Ask scoped to memory">&#128172; Ask about memory</button>
+    `;
+    tabs.querySelectorAll('.memory-view-tab').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        activeTab = btn.dataset.tab;
+        renderTabs();
+        if (activeTab === 'pages') await renderPagesTab();
+        else                        await renderProposalsTab();
+      });
+    });
+    $('memory-view-btn-ask').addEventListener('click', () => {
+      openAskModal({ type: 'memory' }, 'memory wiki');
+    });
+    $('memory-view-btn-lint').addEventListener('click', runLint);
+  }
+
+  // --- Data loaders ---
+
+  async function loadPages() {
+    try {
+      const r = await api.get('/api/memory/pages');
+      pages = r.pages || [];
+    } catch (_) { pages = []; }
+  }
+
+  async function loadProposalsBadge() {
+    try {
+      const r = await api.get('/api/memory/proposals');
+      setBadge((r.proposals || []).length);
+    } catch (_) {}
+  }
+
+  // --- Pages tab ---
+
+  async function renderPagesTab() {
+    const root = $('memory-view-body');
+    root.innerHTML = `
+      <div class="memory-pages-layout">
+        <aside class="memory-pages-rail" id="memory-pages-rail"></aside>
+        <section class="memory-pages-main" id="memory-pages-main">
+          <div class="memory-empty">Select a page from the left.</div>
+        </section>
+      </div>
+    `;
+    renderPagesRail();
+    // Auto-open the first page if nothing is current, or re-open the current
+    // page so a click on Pages from another tab restores context.
+    if (!currentPageName && pages.length) currentPageName = pages[0].name;
+    if (currentPageName) await openPage(currentPageName);
+  }
+
+  function renderPagesRail() {
+    const rail = $('memory-pages-rail');
+    if (!rail) return;
+    if (!pages.length) {
+      rail.innerHTML = '<div class="memory-empty">No wiki pages</div>';
+      return;
+    }
+    rail.innerHTML = pages.map(p => `
+      <button class="memory-page-rail-item ${currentPageName === p.name ? 'active' : ''}"
+              data-page="${escHtml(p.name)}">
+        <span class="memory-page-rail-name">${escHtml(p.name)}.md</span>
+        <span class="memory-page-rail-meta">${p.size_lines}</span>
+      </button>
+    `).join('');
+    rail.querySelectorAll('.memory-page-rail-item').forEach(btn => {
+      btn.addEventListener('click', () => openPage(btn.dataset.page));
+    });
+  }
+
+  async function openPage(name) {
+    // Dirty-check: warn before discarding edits.
+    if (currentPageName && currentPageName !== name) {
+      const editor = $('memory-page-editor-main');
+      if (editor && editor.value !== originalPageContent
+          && !confirm('Discard unsaved changes to ' + currentPageName + '.md?')) {
+        return;
+      }
+    }
+    try {
+      const data = await api.get('/api/memory/page/' + encodeURIComponent(name));
+      currentPageName = name;
+      originalPageContent = data.content;
+      renderPagesRail();
+      renderPageEditor(name, data.content);
+    } catch (e) {
+      alert('Failed to open ' + name + ': ' + e);
+    }
+  }
+
+  function renderPageEditor(name, content) {
+    const main = $('memory-pages-main');
+    if (!main) return;
+    main.innerHTML = `
+      <header class="memory-page-editor-header">
+        <span class="memory-page-editor-title">${escHtml(name)}.md</span>
+        <span class="memory-page-editor-dirty" id="memory-page-dirty" hidden>● unsaved</span>
+        <span style="flex:1;"></span>
+        <span class="memory-page-editor-status" id="memory-page-editor-status"></span>
+        <button class="btn-new-card" id="memory-page-save-btn" title="Save (Ctrl+S)">Save</button>
+      </header>
+      <textarea id="memory-page-editor-main" class="memory-page-editor-main" spellcheck="false"></textarea>
+    `;
+    const ta = $('memory-page-editor-main');
+    ta.value = content;
+    ta.addEventListener('input', () => {
+      const dirty = ta.value !== originalPageContent;
+      $('memory-page-dirty').hidden = !dirty;
+      $('memory-page-editor-status').textContent = '';
+    });
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        savePage();
+      }
+    });
+    $('memory-page-save-btn').addEventListener('click', savePage);
+  }
+
+  async function savePage() {
+    if (!currentPageName) return;
+    const ta = $('memory-page-editor-main');
+    if (!ta) return;
+    const content = ta.value;
+    const status = $('memory-page-editor-status');
+    const saveBtn = $('memory-page-save-btn');
+    status.textContent = 'Saving…';
+    saveBtn.disabled = true;
+    try {
+      await api.put('/api/memory/page/' + encodeURIComponent(currentPageName),
+                    { content });
+      originalPageContent = content;
+      status.textContent = 'Saved.';
+      $('memory-page-dirty').hidden = true;
+      // Refresh page list so the line-count for this page updates.
+      await loadPages();
+      renderPagesRail();
+    } catch (e) {
+      status.textContent = 'Save failed: ' + e;
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  // --- Proposals tab ---
+
+  async function renderProposalsTab() {
+    const root = $('memory-view-body');
+    root.innerHTML = '<div class="memory-empty">Loading proposals…</div>';
+    let proposals = [];
+    try {
+      const r = await api.get('/api/memory/proposals');
+      proposals = r.proposals || [];
+    } catch (e) {
+      root.innerHTML = `<div class="memory-empty">Failed to load proposals: ${escHtml(String(e))}</div>`;
+      return;
+    }
+    setBadge(proposals.length);
+    if (!proposals.length) {
+      root.innerHTML = '<div class="memory-empty">No proposals pending review.</div>';
+      return;
+    }
+    root.innerHTML = `<div class="memory-proposals-list" id="memory-proposals-list"></div>`;
+    const list = $('memory-proposals-list');
+    for (const p of proposals) {
+      const card = document.createElement('div');
+      card.className = 'memory-proposal-card';
+      card.dataset.proposalId = p.id;
+      card.innerHTML = `
+        <header class="memory-proposal-card-header">
+          <span class="memory-proposal-card-kind">${escHtml(p.source || 'lint')}</span>
+          <span class="memory-proposal-card-summary">${escHtml(p.summary || '(no summary)')}</span>
+          <span class="memory-proposal-card-meta">${(p.edits || []).length} edit${(p.edits || []).length === 1 ? '' : 's'}</span>
+          <button class="memory-proposal-expand" title="Show edits">▾</button>
+        </header>
+        <div class="memory-proposal-card-body" hidden></div>
+      `;
+      list.appendChild(card);
+      card.querySelector('.memory-proposal-card-header').addEventListener('click', async (ev) => {
+        if (ev.target.closest('button')) return;
+        await toggleProposal(card);
+      });
+      card.querySelector('.memory-proposal-expand').addEventListener('click', () => toggleProposal(card));
+    }
+    // Auto-expand the first proposal so the user lands on something actionable.
+    if (list.firstElementChild) toggleProposal(list.firstElementChild);
+  }
+
+  async function toggleProposal(card) {
+    const body = card.querySelector('.memory-proposal-card-body');
+    const expand = card.querySelector('.memory-proposal-expand');
+    if (!body.hidden) {
+      body.hidden = true;
+      expand.textContent = '▾';
+      return;
+    }
+    if (!card._loaded) {
+      body.innerHTML = '<div class="memory-empty">Loading…</div>';
+      try {
+        const data = await api.get('/api/memory/proposal/' + encodeURIComponent(card.dataset.proposalId));
+        renderProposalBody(card, data);
+        card._loaded = true;
+      } catch (e) {
+        body.innerHTML = `<div class="memory-empty">Failed: ${escHtml(String(e))}</div>`;
+        return;
+      }
+    }
+    body.hidden = false;
+    expand.textContent = '▴';
+  }
+
+  function renderProposalBody(card, data) {
+    const body = card.querySelector('.memory-proposal-card-body');
+    body.innerHTML = `
+      <div class="memory-proposal-edits"></div>
+      <footer class="memory-proposal-footer">
+        <span class="memory-proposal-status"></span>
+        <span style="flex:1;"></span>
+        <button class="header-btn memory-proposal-dismiss">Dismiss batch</button>
+        <button class="btn-new-card memory-proposal-apply">Apply selected</button>
+      </footer>
+    `;
+    const editsRoot = body.querySelector('.memory-proposal-edits');
+    data.edits.forEach((e, i) => {
+      const editEl = document.createElement('div');
+      editEl.className = 'memory-edit-block';
+      editEl.dataset.editIndex = String(i);
+      editEl.innerHTML = `
+        <header class="memory-edit-block-header">
+          <label class="memory-edit-block-toggle">
+            <input type="checkbox" class="memory-edit-block-checkbox" checked />
+            <code>${escHtml(e.page)}.md</code>
+            <span class="memory-edit-action ${escHtml(e.action)}">${escHtml(e.action)}</span>
+          </label>
+          <span style="flex:1;"></span>
+          <button class="memory-edit-show-current" type="button">Show current</button>
+        </header>
+        <div class="memory-edit-current" hidden>
+          <h5>Current page content</h5>
+          <pre>${escHtml(e.current || '(does not exist yet)')}</pre>
+        </div>
+        <textarea class="memory-edit-textarea" spellcheck="false">${escHtml(e.proposed || '')}</textarea>
+      `;
+      editsRoot.appendChild(editEl);
+      editEl.querySelector('.memory-edit-show-current').addEventListener('click', () => {
+        const curEl = editEl.querySelector('.memory-edit-current');
+        const btn = editEl.querySelector('.memory-edit-show-current');
+        curEl.hidden = !curEl.hidden;
+        btn.textContent = curEl.hidden ? 'Show current' : 'Hide current';
+      });
+    });
+    body.querySelector('.memory-proposal-apply').addEventListener('click', () =>
+      applyProposalCard(card, data.id || card.dataset.proposalId));
+    body.querySelector('.memory-proposal-dismiss').addEventListener('click', () =>
+      dismissProposalCard(card, data.id || card.dataset.proposalId));
+  }
+
+  async function applyProposalCard(card, proposalId) {
+    const body = card.querySelector('.memory-proposal-card-body');
+    const editBlocks = body.querySelectorAll('.memory-edit-block');
+    const accepted = [];
+    const overrides = {};
+    editBlocks.forEach((blk, ix) => {
+      const cb = blk.querySelector('.memory-edit-block-checkbox');
+      if (!cb || !cb.checked) return;
+      const i = parseInt(blk.dataset.editIndex, 10);
+      accepted.push(i);
+      const ta = blk.querySelector('.memory-edit-textarea');
+      if (ta) overrides[String(i)] = ta.value;
+    });
+    const status = body.querySelector('.memory-proposal-status');
+    const applyBtn = body.querySelector('.memory-proposal-apply');
+    const dismissBtn = body.querySelector('.memory-proposal-dismiss');
+    applyBtn.disabled = true; dismissBtn.disabled = true;
+    status.textContent = 'Applying…';
+    try {
+      const result = await api.post(
+        '/api/memory/proposal/' + encodeURIComponent(proposalId) + '/apply',
+        { accepted_indices: accepted, edit_overrides: overrides }
+      );
+      const skipped = (result.skipped || []).length;
+      status.textContent = `Applied ${result.applied.length}${skipped ? `, skipped ${skipped}` : ''}.`;
+      // Proposal is gone server-side; remove its card and refresh badge/pages.
+      setTimeout(async () => {
+        card.remove();
+        await loadProposalsBadge();
+        await loadPages();
+        // If we just emptied the proposals list, swap in the empty-state line.
+        const list = $('memory-proposals-list');
+        if (list && !list.children.length) {
+          $('memory-view-body').innerHTML = '<div class="memory-empty">No proposals pending review.</div>';
+        }
+      }, 300);
+    } catch (e) {
+      status.textContent = 'Apply failed: ' + e;
+      applyBtn.disabled = false; dismissBtn.disabled = false;
+    }
+  }
+
+  async function dismissProposalCard(card, proposalId) {
+    if (!confirm('Dismiss this entire proposal batch? No edits will be applied.')) return;
+    try {
+      await api.post(
+        '/api/memory/proposal/' + encodeURIComponent(proposalId) + '/dismiss', {}
+      );
+      card.remove();
+      await loadProposalsBadge();
+      const list = $('memory-proposals-list');
+      if (list && !list.children.length) {
+        $('memory-view-body').innerHTML = '<div class="memory-empty">No proposals pending review.</div>';
+      }
+    } catch (e) {
+      alert('Dismiss failed: ' + e);
+    }
+  }
+
+  // --- Lint trigger (streams SSE) ---
+
+  async function runLint() {
+    const btn = $('memory-view-btn-lint');
+    if (btn) { btn.disabled = true; btn.textContent = 'Linting…'; }
+    let final = null;
+    try {
+      const resp = await fetch('/api/memory/lint', { method: 'POST' });
+      if (!resp.ok) throw new Error('lint request failed (' + resp.status + ')');
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const blocks = buf.split('\n\n');
+        buf = blocks.pop() || '';
+        for (const block of blocks) {
+          for (const line of block.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              if (ev.type === 'done' || ev.type === 'skipped' || ev.type === 'error') final = ev;
+            } catch (_) {}
+          }
+        }
+      }
+      await loadProposalsBadge();
+      // Jump to the Proposals tab if lint produced something actionable.
+      if (final && final.proposal_id) {
+        activeTab = 'proposals';
+        renderTabs();
+        await renderProposalsTab();
+      } else if (activeTab === 'proposals') {
+        await renderProposalsTab();
+      }
+      const msg = !final ? 'Lint ended.' :
+                  final.type === 'skipped' ? 'Lint skipped: ' + final.reason :
+                  final.type === 'error'   ? 'Lint error: ' + final.message :
+                  final.proposal_id        ? `Lint proposed ${final.edit_count} edit(s).` :
+                                              'Lint clean: ' + (final.summary || 'no changes needed');
+      // Surface the message non-intrusively via the dismissable confirm tray
+      // if we can; otherwise just alert. For v1, alert is fine.
+      alert(msg);
+    } catch (e) {
+      alert('Lint failed: ' + e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Run lint now'; }
+    }
+  }
+
+  function init() {
+    refreshBadge();
+    setInterval(refreshBadge, 60_000);
+  }
+
+  return { init, enterView, refreshBadge };
+})();
+
+MemoryUI.init();
+
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
@@ -6607,6 +7458,7 @@ document.addEventListener('keydown', (e) => {
     case '2': switchView('dashboard'); break;
     case '3': switchView('calendar'); break;
     case '4': switchView('table'); break;
+    case '5': switchView('memory'); break;
     case 'n':
     case 'N':
       document.getElementById('btn-new-card').click();

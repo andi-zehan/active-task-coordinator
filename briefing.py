@@ -20,6 +20,7 @@ import copy
 import json
 from datetime import date, datetime
 
+import memory_context
 import notes
 import server
 from chat_tools import (
@@ -256,26 +257,22 @@ def analyze_stream(user_prompt: str, *, model: str, client,
 
     toc = notes.build_toc()
 
-    messages = [
+    first_user_blocks = memory_context.load_memory_context() + [
         {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "BOARD INDEX:\n" + json.dumps(toc),
-                    "cache_control": {"type": "ephemeral"},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"BRIEFING_ID: {briefing_id}\n"
-                        f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
-                        f"USER REQUEST:\n{user_prompt}"
-                    ),
-                },
-            ],
+            "type": "text",
+            "text": "BOARD INDEX:\n" + json.dumps(toc),
+            "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": (
+                f"BRIEFING_ID: {briefing_id}\n"
+                f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
+                f"USER REQUEST:\n{user_prompt}"
+            ),
         },
     ]
+    messages = [{"role": "user", "content": first_user_blocks}]
 
     final = None
     for ev in _drive_loop(messages, model=model, client=client, max_turns=max_turns):
@@ -328,31 +325,27 @@ def refine_stream(briefing_id: str, current_ops: list, current_text: str,
         "PREVIOUS BRIEFING TEXT: (none — generate from scratch.)"
     )
 
-    messages = [
+    first_user_blocks = memory_context.load_memory_context() + [
         {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "BOARD INDEX:\n" + json.dumps(toc),
-                    "cache_control": {"type": "ephemeral"},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"BRIEFING_ID: {briefing_id}\n"
-                        f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
-                        f"{prev_text_block}\n\n"
-                        f"{proposals_block}\n\n"
-                        f"USER FEEDBACK:\n{feedback}\n\n"
-                        f"Re-write the briefing AND re-emit the COMPLETE "
-                        f"corrected set of write-tool calls. Anything you don't "
-                        f"re-queue is dropped. Then call finish."
-                    ),
-                },
-            ],
+            "type": "text",
+            "text": "BOARD INDEX:\n" + json.dumps(toc),
+            "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": (
+                f"BRIEFING_ID: {briefing_id}\n"
+                f"TODAY: {date.today().strftime('%A %Y-%m-%d')}\n\n"
+                f"{prev_text_block}\n\n"
+                f"{proposals_block}\n\n"
+                f"USER FEEDBACK:\n{feedback}\n\n"
+                f"Re-write the briefing AND re-emit the COMPLETE "
+                f"corrected set of write-tool calls. Anything you don't "
+                f"re-queue is dropped. Then call finish."
+            ),
         },
     ]
+    messages = [{"role": "user", "content": first_user_blocks}]
 
     final = None
     for ev in _drive_loop(messages, model=model, client=client, max_turns=max_turns):

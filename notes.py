@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
+import memory_context
 import server
 from chat_tools import (
     READ_TOOL_DEFS, WRITE_TOOL_DEFS, READ_TOOLS,
@@ -116,7 +117,11 @@ SYSTEM_PROMPT = """You turn meeting notes into kanban card operations using tool
 
 You will receive:
 1. A board INDEX listing every board and its cards (id, title, labels, due, assignee).
-2. A meeting note.
+2. A memory wiki (org chart, external stakeholders, work preferences) — use this
+   to recognize people and stakeholders mentioned in the note, ground assignment
+   choices, and apply the user's known work patterns. Call read_memory_page(name)
+   to pull additional pages listed in INDEX.
+3. A meeting note.
 
 Workflow:
 - Use search_cards before create_card so you don't duplicate existing work.
@@ -503,26 +508,22 @@ def analyze_stream(body: str, title: str, *, model: str, client,
     summary = ""
     finished = False
 
-    messages = [
+    first_user_blocks = memory_context.load_memory_context() + [
         {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "BOARD INDEX:\n" + json.dumps(toc),
-                    "cache_control": {"type": "ephemeral"},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"NOTE_ID: {note_id}\n"
-                        f"TODAY: {date.today().isoformat()}\n\n"
-                        f"MEETING NOTE:\n{body}"
-                    ),
-                },
-            ],
+            "type": "text",
+            "text": "BOARD INDEX:\n" + json.dumps(toc),
+            "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": (
+                f"NOTE_ID: {note_id}\n"
+                f"TODAY: {date.today().isoformat()}\n\n"
+                f"MEETING NOTE:\n{body}"
+            ),
         },
     ]
+    messages = [{"role": "user", "content": first_user_blocks}]
 
     for turn in range(1, max_turns + 1):
         yield {"type": "turn", "n": turn}
@@ -656,30 +657,26 @@ def refine_stream(note_id: str, current_ops: list[dict], feedback: str,
         "PREVIOUSLY PROPOSED OPS: (none — start fresh.)"
     )
 
-    messages = [
+    first_user_blocks = memory_context.load_memory_context() + [
         {
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": "BOARD INDEX:\n" + json.dumps(toc),
-                    "cache_control": {"type": "ephemeral"},
-                },
-                {
-                    "type": "text",
-                    "text": (
-                        f"NOTE_ID: {note_id}\n"
-                        f"TODAY: {date.today().isoformat()}\n\n"
-                        f"ORIGINAL MEETING NOTE (titled \"{note_title}\"):\n{note_body}\n\n"
-                        f"{proposals_block}\n\n"
-                        f"USER FEEDBACK ON YOUR PROPOSED OPS:\n{feedback}\n\n"
-                        f"Re-emit the COMPLETE corrected set of write-tool calls. "
-                        f"Anything you don't re-queue is dropped. Then call finish."
-                    ),
-                },
-            ],
+            "type": "text",
+            "text": "BOARD INDEX:\n" + json.dumps(toc),
+            "cache_control": {"type": "ephemeral"},
+        },
+        {
+            "type": "text",
+            "text": (
+                f"NOTE_ID: {note_id}\n"
+                f"TODAY: {date.today().isoformat()}\n\n"
+                f"ORIGINAL MEETING NOTE (titled \"{note_title}\"):\n{note_body}\n\n"
+                f"{proposals_block}\n\n"
+                f"USER FEEDBACK ON YOUR PROPOSED OPS:\n{feedback}\n\n"
+                f"Re-emit the COMPLETE corrected set of write-tool calls. "
+                f"Anything you don't re-queue is dropped. Then call finish."
+            ),
         },
     ]
+    messages = [{"role": "user", "content": first_user_blocks}]
 
     for turn in range(1, max_turns + 1):
         yield {"type": "turn", "n": turn}

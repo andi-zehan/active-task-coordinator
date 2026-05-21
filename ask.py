@@ -1,9 +1,16 @@
 """Contextual Ask: chat-style multi-turn dialog seeded with a fixed snapshot.
 
-Two context shapes for v1:
+Three context shapes:
 
   {"type": "view"}                   → all cards across all boards (TOC)
   {"type": "card", "id": "C-12"}     → one card's body + relations + siblings
+  {"type": "memory"}                 → no card snapshot — for wiki work only.
+                                       Memory pages are already injected by
+                                       memory_context.load_memory_context()
+                                       into every Ask request; this context
+                                       just skips the kanban TOC so a memory
+                                       question doesn't pay for cards it
+                                       doesn't need.
 
 The view payload is the same shape as `notes.build_toc()`. The card payload
 hand-builds the relevant slice so the model sees the actual checklist /
@@ -156,6 +163,15 @@ def build_context_payload(context: dict) -> dict:
             "today": date.today().isoformat(),
             "boards": toc.get("boards", []),
         }
+    if ctype == "memory":
+        # Intentionally empty. The wiki itself is already in the prompt via
+        # memory_context.load_memory_context() (chat.py prepends it to every
+        # turn). No need to duplicate it here. We keep a marker so the
+        # SYSTEM_PROMPT / label code can branch on it.
+        return {
+            "context_type": "memory",
+            "today": date.today().isoformat(),
+        }
     if ctype == "card":
         cid = (context.get("id") or "").strip()
         if not cid:
@@ -186,20 +202,41 @@ def _label_for(payload: dict) -> str:
     if payload["context_type"] == "card":
         c = payload["card"]
         return f"card {c['id']}: {c['title']}"
+    if payload["context_type"] == "memory":
+        return "memory wiki"
     return "context"
 
 
 def build_seed_message(payload: dict, question: str) -> dict:
-    """Build the first user message: pinned context (cached) + question."""
+    """Build the first user message: pinned context (cached) + question.
+
+    For memory context the pinned snapshot is empty (the wiki itself is
+    injected by memory_context.load_memory_context()) — we send a one-line
+    marker instead of a heavy JSON blob and skip the cache_control breakpoint.
+    """
     label = _label_for(payload)
+    if payload.get("context_type") == "memory":
+        pinned_block = {
+            "type": "text",
+            "text": (
+                f"PINNED CONTEXT ({label}): this conversation is scoped to the "
+                f"memory wiki. The wiki pages above are your source of truth; "
+                f"do NOT call card read-tools (list_cards / list_overdue / "
+                f"find_by_assignee / etc.) unless the user explicitly asks "
+                f"about cards. Use save_as_source and propose_memory_edits "
+                f"to update the wiki."
+            ),
+        }
+    else:
+        pinned_block = {
+            "type": "text",
+            "text": f"PINNED CONTEXT ({label}):\n" + json.dumps(payload),
+            "cache_control": {"type": "ephemeral"},
+        }
     return {
         "role": "user",
         "content": [
-            {
-                "type": "text",
-                "text": f"PINNED CONTEXT ({label}):\n" + json.dumps(payload),
-                "cache_control": {"type": "ephemeral"},
-            },
+            pinned_block,
             {
                 "type": "text",
                 "text": f"USER QUESTION:\n{question}",
