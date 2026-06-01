@@ -1798,11 +1798,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   border-radius: 4px;
   resize: vertical;
   font-size: 14px;
-}
-.desc-edit .desc-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  box-sizing: border-box;
 }
 .btn-sm {
   padding: 4px 12px;
@@ -1880,6 +1876,15 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
   font-size: 14px;
 }
 .checklist-item.done label { text-decoration: line-through; color: #97a0af; }
+.checklist-edit-input {
+  flex: 1;
+  padding: 1px 4px;
+  border: 1px solid #4c9aff;
+  border-radius: 3px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
 .checklist-item .remove-checklist-item {
   opacity: 0;
   transition: opacity 0.1s;
@@ -4376,7 +4381,7 @@ function renderModal(card) {
     const item = checklist[i];
     html += `<div class="checklist-item${item.done ? ' done' : ''}">
       <input type="checkbox" data-index="${i}" ${item.done ? 'checked' : ''} />
-      <label>${escHtml(item.text)}</label>
+      <label class="checklist-label" data-index="${i}" title="Click to edit">${escHtml(item.text)}</label>
       <button class="remove-checklist-item" data-index="${i}" title="Remove">&times;</button>
     </div>`;
   }
@@ -4542,23 +4547,20 @@ function renderModal(card) {
     container.innerHTML = `
       <div class="desc-edit">
         <textarea id="desc-textarea">${escHtml(description)}</textarea>
-        <div class="desc-actions">
-          <button class="btn-sm primary" id="desc-save">Save</button>
-          <button class="btn-sm" id="desc-cancel">Cancel</button>
-        </div>
       </div>`;
     const descTextarea = document.getElementById('desc-textarea');
     descTextarea.focus();
     attachWikilinkTypeahead(descTextarea);
-    document.getElementById('desc-save').addEventListener('click', async () => {
-      const newDesc = document.getElementById('desc-textarea').value;
+    descTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); renderModal(card); }
+    });
+    descTextarea.addEventListener('blur', async () => {
+      const newDesc = descTextarea.value;
+      if (newDesc === description) { renderModal(card); return; }
       const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { description: newDesc });
       state.modalCard = updated;
       renderModal(updated);
       refreshCurrentView();
-    });
-    document.getElementById('desc-cancel').addEventListener('click', () => {
-      renderModal(card);
     });
   });
 
@@ -4573,6 +4575,37 @@ function renderModal(card) {
       renderModal(updated);
       updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
       refreshCurrentView();
+    });
+  });
+
+  // Checklist label inline edit
+  body.querySelectorAll('.checklist-label').forEach(label => {
+    label.addEventListener('click', () => {
+      const idx = parseInt(label.dataset.index, 10);
+      const row = label.closest('.checklist-item');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'checklist-edit-input';
+      input.value = checklist[idx].text;
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = async () => {
+        const newText = input.value.trim();
+        if (!newText || newText === checklist[idx].text) { renderModal(card); return; }
+        checklist[idx].text = newText;
+        const clStr = buildChecklistString(checklist);
+        const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { checklist: clStr });
+        state.modalCard = updated;
+        renderModal(updated);
+        updateCardChecklistBar(cardPath.board, cardPath.list, cardPath.slug, updated);
+        refreshCurrentView();
+      };
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); renderModal(card); }
+      });
+      input.addEventListener('blur', commit);
     });
   });
 
