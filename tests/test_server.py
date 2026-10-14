@@ -163,7 +163,7 @@ class TestIdIndex(unittest.TestCase):
         self.assertEqual(server.next_id(), "C-1")
 
     def test_next_id_after_one_card(self):
-        self._write_card_with_id("b", "ideas", "C-5", "C-5")
+        self._write_card_with_id("b", "backlog", "C-5", "C-5")
         server.reset_id_index()
         self.assertEqual(server.next_id(), "C-6")
 
@@ -184,18 +184,18 @@ class TestIdIndex(unittest.TestCase):
         # resolve_id verifies the file exists at the cached location, so we
         # must write the card before registering — matching how every real
         # code path uses register_id (after write_card / shutil.move).
-        self._write_card_with_id("x", "ideas", "C-42", "C-42")
-        server.register_id("C-42", "x", "ideas")
-        self.assertEqual(server.resolve_id("C-42"), ("x", "ideas"))
+        self._write_card_with_id("x", "backlog", "C-42", "C-42")
+        server.register_id("C-42", "x", "backlog")
+        self.assertEqual(server.resolve_id("C-42"), ("x", "backlog"))
 
     def test_unregister_id_removes_from_index(self):
-        self._write_card_with_id("x", "ideas", "C-42", "C-42")
-        server.register_id("C-42", "x", "ideas")
+        self._write_card_with_id("x", "backlog", "C-42", "C-42")
+        server.register_id("C-42", "x", "backlog")
         # Unregister + delete on disk together — matches every real call site
         # (delete_card, archive). resolve_id rescans on a miss, so leaving the
         # file would just re-populate the index.
         server.unregister_id("C-42")
-        (server.DATA_DIR / "boards" / "x" / "ideas" / "C-42.md").unlink()
+        (server.DATA_DIR / "boards" / "x" / "backlog" / "C-42.md").unlink()
         self.assertIsNone(server.resolve_id("C-42"))
 
     def test_resolve_id_rescans_when_file_missing(self):
@@ -245,85 +245,85 @@ class TestBidirectionalRelations(unittest.TestCase):
         server.register_id(card_id, board, list_slug)
 
     def test_adding_relation_appears_on_other_card(self):
-        self._write_card("b", "ideas", "C-1")
-        self._write_card("b", "ideas", "C-2")
+        self._write_card("b", "backlog", "C-1")
+        self._write_card("b", "backlog", "C-2")
         server._sync_back_relations("C-1", [], ["C-2"])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["relations"], ["C-1"])
 
     def test_removing_relation_removes_back_reference(self):
-        self._write_card("b", "ideas", "C-1", relations=["C-2"])
-        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        self._write_card("b", "backlog", "C-1", relations=["C-2"])
+        self._write_card("b", "backlog", "C-2", relations=["C-1"])
         server._sync_back_relations("C-1", ["C-2"], [])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["relations"], [])
 
     def test_adding_does_not_duplicate_existing_back_reference(self):
-        self._write_card("b", "ideas", "C-1")
-        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        self._write_card("b", "backlog", "C-1")
+        self._write_card("b", "backlog", "C-2", relations=["C-1"])
         server._sync_back_relations("C-1", [], ["C-2"])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["relations"], ["C-1"])
 
     def test_unresolved_id_is_skipped(self):
-        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "backlog", "C-1")
         # No card C-99 exists; sync must not raise.
         server._sync_back_relations("C-1", [], ["C-99"])
         # And no spurious file was created.
         self.assertIsNone(server.resolve_id("C-99"))
 
     def test_self_reference_is_ignored(self):
-        self._write_card("b", "ideas", "C-1")
+        self._write_card("b", "backlog", "C-1")
         server._sync_back_relations("C-1", [], ["C-1"])
-        card = server.read_card("b", "ideas", "C-1")
+        card = server.read_card("b", "backlog", "C-1")
         # We did not re-add C-1 onto itself via the back-sync path.
         self.assertEqual(card["relations"], [])
 
     def test_works_across_boards_and_lists(self):
-        self._write_card("ba", "ideas", "C-1")
+        self._write_card("ba", "backlog", "C-1")
         self._write_card("bb", "backlog", "C-2")
         server._sync_back_relations("C-1", [], ["C-2"])
         other = server.read_card("bb", "backlog", "C-2")
         self.assertEqual(other["relations"], ["C-1"])
 
     def test_back_reference_bumps_updated_date(self):
-        self._write_card("b", "ideas", "C-1")
-        self._write_card("b", "ideas", "C-2")
+        self._write_card("b", "backlog", "C-1")
+        self._write_card("b", "backlog", "C-2")
         # C-2 was written with updated=2026-05-07; the sync should set it to today.
         server._sync_back_relations("C-1", [], ["C-2"])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["updated"], str(date.today()))
 
     def test_deleting_card_clears_back_references(self):
-        self._write_card("b", "ideas", "C-1", relations=["C-2"])
-        self._write_card("b", "ideas", "C-2", relations=["C-1"])
+        self._write_card("b", "backlog", "C-1", relations=["C-2"])
+        self._write_card("b", "backlog", "C-2", relations=["C-1"])
         # Simulate the delete handler's sync step.
         server._sync_back_relations("C-1", ["C-2"], [])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["relations"], [])
 
     def test_delete_with_no_relations_is_noop(self):
-        self._write_card("b", "ideas", "C-1")
-        self._write_card("b", "ideas", "C-2")
+        self._write_card("b", "backlog", "C-1")
+        self._write_card("b", "backlog", "C-2")
         server._sync_back_relations("C-1", [], [])
-        other = server.read_card("b", "ideas", "C-2")
+        other = server.read_card("b", "backlog", "C-2")
         self.assertEqual(other["relations"], [])
 
     def test_update_card_handler_writes_back_reference(self):
         """End-to-end via _handle_update_card: editing C-1 must mutate C-2 on disk."""
-        self._write_card("b", "ideas", "C-1")
-        self._write_card("b", "ideas", "C-2")
+        self._write_card("b", "backlog", "C-1")
+        self._write_card("b", "backlog", "C-2")
         # Simulate the slice of _handle_update_card relevant to relations:
-        card = server.read_card("b", "ideas", "C-1")
+        card = server.read_card("b", "backlog", "C-1")
         old_relations = list(card.get("relations") or [])
         card["relations"] = ["C-2"]
         card["updated"] = str(date.today())
         meta = {k: v for k, v in card.items() if k not in ("slug", "board", "list", "body")}
-        server.write_card("b", "ideas", "C-1", meta, card["body"])
+        server.write_card("b", "backlog", "C-1", meta, card["body"])
         server._sync_back_relations("C-1", old_relations, card["relations"])
 
-        self.assertEqual(server.read_card("b", "ideas", "C-1")["relations"], ["C-2"])
-        self.assertEqual(server.read_card("b", "ideas", "C-2")["relations"], ["C-1"])
+        self.assertEqual(server.read_card("b", "backlog", "C-1")["relations"], ["C-2"])
+        self.assertEqual(server.read_card("b", "backlog", "C-2")["relations"], ["C-1"])
 
 
 class TestDataLayer(unittest.TestCase):
@@ -355,7 +355,7 @@ class TestDataLayer(unittest.TestCase):
 
     def test_card_create_and_read(self):
         server.write_board_meta("proj", {"name": "Proj", "color": "#000"})
-        server.write_card("proj", "ideas", "my-card", {
+        server.write_card("proj", "backlog", "my-card", {
             "title": "My Card",
             "assignee": "Bob",
             "labels": ["bug"],
@@ -366,18 +366,18 @@ class TestDataLayer(unittest.TestCase):
             "custom_fields": {},
             "attachments": [],
         }, "\n## Description\n\nTest body\n")
-        order_path = server.DATA_DIR / "boards" / "proj" / "ideas" / "_order.json"
+        order_path = server.DATA_DIR / "boards" / "proj" / "backlog" / "_order.json"
         server.write_json(order_path, ["my-card"])
 
-        card = server.read_card("proj", "ideas", "my-card")
+        card = server.read_card("proj", "backlog", "my-card")
         self.assertEqual(card['title'], 'My Card')
         self.assertEqual(card['assignee'], 'Bob')
         self.assertEqual(card['board'], 'proj')
-        self.assertEqual(card['list'], 'ideas')
+        self.assertEqual(card['list'], 'backlog')
         self.assertIn('Test body', card['body'])
 
     def test_read_nonexistent_card(self):
-        self.assertIsNone(server.read_card("nope", "ideas", "nope"))
+        self.assertIsNone(server.read_card("nope", "backlog", "nope"))
 
 
 class TestBoardAPI(unittest.TestCase):
@@ -488,7 +488,7 @@ class TestCardAPI(unittest.TestCase):
 
     def test_create_card(self):
         status, data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {
+            '/api/boards/card-board/lists/backlog/cards', {
                 'title': 'My Card',
                 'assignee': 'Alice',
                 'labels': ['bug', 'urgent'],
@@ -503,36 +503,36 @@ class TestCardAPI(unittest.TestCase):
 
     def test_create_card_assigns_id(self):
         status, data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {'title': 'First'})
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'First'})
         self.assertEqual(status, 201)
         self.assertEqual(data['id'], 'C-1')
 
         status, data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {'title': 'Second'})
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'Second'})
         self.assertEqual(status, 201)
         self.assertEqual(data['id'], 'C-2')
 
     def test_create_card_writes_id_to_frontmatter(self):
         status, data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {'title': 'Has ID'})
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'Has ID'})
         # Filename is the ID, not a slug.
-        path = server.DATA_DIR / "boards" / "card-board" / "ideas" / f"{data['id']}.md"
+        path = server.DATA_DIR / "boards" / "card-board" / "backlog" / f"{data['id']}.md"
         self.assertTrue(path.exists())
         # Slug field on the response equals the ID (filename).
         self.assertEqual(data['slug'], data['id'])
         # _order.json holds the ID.
-        order = server.read_json(server.DATA_DIR / "boards" / "card-board" / "ideas" / "_order.json")
+        order = server.read_json(server.DATA_DIR / "boards" / "card-board" / "backlog" / "_order.json")
         self.assertIn(data['id'], order)
 
     def test_get_card(self):
         status, create_data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {
+            '/api/boards/card-board/lists/backlog/cards', {
                 'title': 'Get Me',
                 'description': 'card body text',
             })
         card_id = create_data['id']
         status, data = make_request_port(8090, 'GET',
-            f'/api/cards/card-board/ideas/{card_id}')
+            f'/api/cards/card-board/backlog/{card_id}')
         self.assertEqual(status, 200)
         self.assertEqual(data['title'], 'Get Me')
         self.assertIn('card body text', data['body'])
@@ -558,27 +558,27 @@ class TestCardAPI(unittest.TestCase):
 
     def test_delete_card(self):
         status, create_data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {
+            '/api/boards/card-board/lists/backlog/cards', {
                 'title': 'Delete Me',
             })
         card_id = create_data['id']
         status, data = make_request_port(8090, 'DELETE',
-            f'/api/cards/card-board/ideas/{card_id}')
+            f'/api/cards/card-board/backlog/{card_id}')
         self.assertEqual(status, 200)
         self.assertEqual(data['deleted'], card_id)
         # Verify it's gone
         status, data = make_request_port(8090, 'GET',
-            f'/api/cards/card-board/ideas/{card_id}')
+            f'/api/cards/card-board/backlog/{card_id}')
         self.assertEqual(status, 404)
 
     def test_move_card(self):
         status, create_data = make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {
+            '/api/boards/card-board/lists/backlog/cards', {
                 'title': 'Move Me',
             })
         card_id = create_data['id']
         status, data = make_request_port(8090, 'PUT',
-            f'/api/cards/card-board/ideas/{card_id}/move', {
+            f'/api/cards/card-board/backlog/{card_id}/move', {
                 'target_list': 'in-progress',
             })
         self.assertEqual(status, 200)
@@ -590,16 +590,33 @@ class TestCardAPI(unittest.TestCase):
         self.assertEqual(data['title'], 'Move Me')
         # Verify card is gone from source list
         status, data = make_request_port(8090, 'GET',
-            f'/api/cards/card-board/ideas/{card_id}')
+            f'/api/cards/card-board/backlog/{card_id}')
         self.assertEqual(status, 404)
+
+    def test_create_card_rejects_unknown_list(self):
+        status, _ = make_request_port(8090, 'POST',
+            '/api/boards/card-board/lists/ideas/cards', {'title': 'Nope'})
+        self.assertEqual(status, 400)
+        self.assertFalse((server.DATA_DIR / "boards" / "card-board" / "ideas").exists())
+
+    def test_move_card_rejects_unknown_list(self):
+        status, create_data = make_request_port(8090, 'POST',
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'Stay'})
+        card_id = create_data['id']
+        status, _ = make_request_port(8090, 'PUT',
+            f'/api/cards/card-board/backlog/{card_id}/move', {'target_list': 'ideas'})
+        self.assertEqual(status, 400)
+        status, _ = make_request_port(8090, 'GET',
+            f'/api/cards/card-board/backlog/{card_id}')
+        self.assertEqual(status, 200)
 
     def test_list_cards(self):
         make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {'title': 'Card A'})
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'Card A'})
         make_request_port(8090, 'POST',
-            '/api/boards/card-board/lists/ideas/cards', {'title': 'Card B'})
+            '/api/boards/card-board/lists/backlog/cards', {'title': 'Card B'})
         status, data = make_request_port(8090, 'GET',
-            '/api/boards/card-board/lists/ideas/cards')
+            '/api/boards/card-board/lists/backlog/cards')
         self.assertEqual(status, 200)
         self.assertEqual(len(data), 2)
         titles = [c['title'] for c in data]
@@ -643,7 +660,7 @@ class TestAggregationAPI(unittest.TestCase):
         past_str = str(date.today() - timedelta(days=2))
         # Card due today
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Today Card', 'due': today_str})
         # Card due this week
         if this_week_str:
@@ -708,10 +725,10 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_calendar(self):
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'May Card', 'due': '2026-05-15'})
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'June Card', 'due': '2026-06-01'})
         status, data = make_request_port(8091, 'GET', '/api/calendar/2026/5')
         self.assertEqual(status, 200)
@@ -720,10 +737,10 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_search_by_title(self):
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Login Bug Fix'})
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Dashboard Feature'})
         status, data = make_request_port(8091, 'GET',
             '/api/search?q=login')
@@ -733,10 +750,10 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_search_by_description(self):
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Task A', 'description': 'investigate the cache layer'})
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Task B', 'description': 'rewrite the loader'})
         status, data = make_request_port(8091, 'GET',
             '/api/search?q=cache')
@@ -746,7 +763,7 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_search_by_card_id(self):
         status_create, created = make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Some Task'})
         self.assertEqual(status_create, 201)
         cid = created['id'].lower()
@@ -759,7 +776,7 @@ class TestAggregationAPI(unittest.TestCase):
     def test_search_does_not_match_assignee(self):
         # Per spec: search is title + description + id only.
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Task A', 'assignee': 'Charlie'})
         status, data = make_request_port(8091, 'GET',
             '/api/search?q=charlie')
@@ -768,7 +785,7 @@ class TestAggregationAPI(unittest.TestCase):
 
     def test_search_no_results(self):
         make_request_port(8091, 'POST',
-            '/api/boards/agg-board/lists/ideas/cards', {
+            '/api/boards/agg-board/lists/backlog/cards', {
                 'title': 'Existing Card'})
         status, data = make_request_port(8091, 'GET',
             '/api/search?q=nonexistent')
@@ -912,7 +929,7 @@ class TestNotesEndpoints(unittest.TestCase):
         board_dir.mkdir(parents=True)
         (board_dir / "_board.md").write_text(
             "---\nname: Alpha\ncolor: '#000'\n---\n", encoding="utf-8")
-        for lst in ("ideas", "backlog", "in-progress", "done"):
+        for lst in ("backlog", "in-progress", "done"):
             (board_dir / lst).mkdir()
             (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
         (self.data_dir / "_boards-order.json").write_text('["alpha"]', encoding="utf-8")
@@ -1012,7 +1029,7 @@ class TestBriefingEndpoints(unittest.TestCase):
         board_dir.mkdir(parents=True)
         (board_dir / "_board.md").write_text(
             "---\nname: Alpha\ncolor: '#000'\n---\n", encoding="utf-8")
-        for lst in ("ideas", "backlog", "in-progress", "done"):
+        for lst in ("backlog", "in-progress", "done"):
             (board_dir / lst).mkdir()
             (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
         (self.data_dir / "_boards-order.json").write_text('["alpha"]', encoding="utf-8")

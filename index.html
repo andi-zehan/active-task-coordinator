@@ -17,18 +17,17 @@ input, textarea, [contenteditable] { cursor: text !important; }
 
 :root {
   --chat-sidebar-w: 560px;
-  --column-w: 400px;
   --modal-w: 800px;
   --modal-narrow-w: 680px;
 }
 @media (min-width: 1800px) {
-  :root { --chat-sidebar-w: 620px; --column-w: 420px; }
+  :root { --chat-sidebar-w: 620px; }
 }
 @media (max-width: 1399px) {
-  :root { --chat-sidebar-w: 460px; --column-w: 340px; }
+  :root { --chat-sidebar-w: 460px; }
 }
 @media (max-width: 1100px) {
-  :root { --chat-sidebar-w: 380px; --column-w: 300px; }
+  :root { --chat-sidebar-w: 380px; }
 }
 
 body {
@@ -50,8 +49,10 @@ a { color: #0052cc; text-decoration: none; }
   height: 48px;
   background: #fff;
   border-bottom: 1px solid #dfe1e6;
-  padding: 0 16px;
-  gap: 12px;
+  /* Right padding lines the last button up with the swimlanes' right edge
+     (board-view's 16px left padding + --lane-w); never less than 16px. */
+  padding: 0 max(16px, calc(100% - 16px - var(--lane-w))) 0 16px;
+  gap: 8px;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -172,7 +173,7 @@ a { color: #0052cc; text-decoration: none; }
   position: relative;
 }
 .search-wrapper input {
-  width: 220px;
+  width: 180px;
   padding: 5px 10px 5px 28px;
   border: 1px solid #dfe1e6;
   border-radius: 4px;
@@ -183,7 +184,7 @@ a { color: #0052cc; text-decoration: none; }
   background: #fff;
   border-color: #4c9aff;
   outline: none;
-  width: 280px;
+  width: 240px;
 }
 .search-wrapper::before {
   content: "\1F50D";
@@ -234,7 +235,7 @@ a { color: #0052cc; text-decoration: none; }
   transition: background 0.15s;
 }
 .btn-new-card:hover { background: #0065ff; }
-.top-btn { min-width: 130px; text-align: center; padding: 5px 10px; }
+.top-btn { text-align: center; padding: 4px 10px; }
 .header-btn {
   padding: 5px 12px;
   background: #f4f5f7;
@@ -249,6 +250,7 @@ a { color: #0052cc; text-decoration: none; }
   transition: background 0.15s, color 0.15s;
 }
 .header-btn:hover { background: #ebecf0; color: #172b4d; }
+.top-bar .header-btn { margin-left: 0; }  /* the bar's gap spaces its buttons */
 .header-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .header-btn[disabled]:hover { background: #f4f5f7; color: #5e6c84; }
 .header-btn.icon-btn {
@@ -331,7 +333,8 @@ a { color: #0052cc; text-decoration: none; }
 .filter-bar {
   display: none;
   align-items: center;
-  padding: 8px 16px;
+  /* Same right edge as the top bar and swimlanes. */
+  padding: 8px max(16px, calc(100% - 16px - var(--lane-w))) 8px 16px;
   gap: 10px;
   background: #fff;
   border-bottom: 1px solid #dfe1e6;
@@ -459,7 +462,7 @@ a { color: #0052cc; text-decoration: none; }
   margin-bottom: 24px;
   background: #e4e6ea;
   border-radius: 10px;
-  padding: 12px;
+  padding: 12px var(--lane-pad-x) 24px;
 }
 .swimlane-header {
   display: flex;
@@ -487,13 +490,10 @@ a { color: #0052cc; text-decoration: none; }
 }
 .swimlane.collapsed .swimlane-toggle { transform: rotate(-90deg); }
 .swimlane.collapsed .swimlane-columns { display: none; }
-.swimlane.collapsed { padding: 8px 12px; }
+.swimlane.collapsed { padding: 8px 24px; }
 .swimlane.collapsed .swimlane-header { padding-bottom: 0; }
-.swimlane.collapsed .swimlane-drag-handle,
 .swimlane.collapsed .swimlane-color,
 .swimlane.collapsed .board-edit-popover { display: none; }
-.swimlane.collapsed { cursor: grab; }
-.swimlane.collapsed:active { cursor: grabbing; }
 .swimlane-card-count {
   background: #c1c7d0;
   color: #fff;
@@ -535,39 +535,6 @@ a { color: #0052cc; text-decoration: none; }
   width: 40px; height: 28px; border: 1px solid #dfe1e6;
   border-radius: 4px; cursor: pointer; padding: 2px;
 }
-.swimlane-drag-handle {
-  cursor: grab;
-  padding: 4px 2px;
-  color: #b3b9c4;
-  font-size: 16px;
-  line-height: 1;
-  user-select: none;
-  display: flex;
-  align-items: center;
-}
-.swimlane-drag-handle:hover { color: #5e6c84; }
-.swimlane-drag-handle:active { cursor: grabbing; }
-.swimlane-move-btns {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin-right: 2px;
-}
-.swimlane-move-btn {
-  background: none;
-  border: none;
-  color: #b3b9c4;
-  cursor: pointer;
-  padding: 0 4px;
-  font-size: 10px;
-  line-height: 1;
-  user-select: none;
-}
-.swimlane-move-btn:hover:not(:disabled) { color: #0052cc; }
-.swimlane-move-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.swimlane.dragging-lane { opacity: 0.5; }
-.swimlane.drop-target-above { border-top: 2px solid #0052cc; }
-.swimlane.drop-target-below { border-bottom: 2px solid #0052cc; }
 .swimlane-color {
   width: 12px;
   height: 12px;
@@ -575,19 +542,21 @@ a { color: #0052cc; text-decoration: none; }
 }
 .swimlane-columns {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  gap: var(--column-gap);
+  align-items: stretch;  /* every column matches the tallest one in its lane */
 }
 .board-column {
-  flex: 0 0 var(--column-w);
+  /* Fixed width: a card is at most 4x as wide as it is tall, plus a side
+     gutter (minus .column-cards' own 2px padding) on each side. */
+  flex: 0 0 auto;
+  width: var(--column-w);
   background: #ebecf0;
   border-radius: 8px;
-  padding: 10px;
+  padding: 10px calc(var(--card-gutter) - 2px);
   max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
 }
-.board-column[data-list="ideas"]       { background: #F4A261; }
 .board-column[data-list="backlog"]     { background: #E9C46A; }
 .board-column[data-list="in-progress"] { background: #264653; }
 .board-column[data-list="done"]        { background: #2A9D8F; }
@@ -605,6 +574,18 @@ a { color: #0052cc; text-decoration: none; }
   color: #5e6c84;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.column-header .column-note {
+  flex: 1;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .column-header .card-count {
   background: #dfe1e6;
@@ -687,51 +668,103 @@ a { color: #0052cc; text-decoration: none; }
   from { opacity: 0; transform: scale(0.95) translateY(-4px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
+/* Kanban card: three fixed-height rows (top: ID + labels + checklist,
+   middle: single-line title, bottom: assignee + due).
+   Every slot is always rendered, empty or not, so all cards have
+   identical height regardless of which fields are filled in.
+   Geometry is defined on body so .board-column can derive its width:
+   card width = 4 x card height (1:4 ratio), side gutter = 2 x title row. */
+body {
+  --card-pad-y: 8px;
+  --card-pad-x: 10px;
+  --card-row-h: 16px;
+  --card-row-gap: 4px;
+  --title-lh: 19px;
+  --title-lines: 1;
+  --card-h: calc(2 * var(--card-pad-y) + 2 * var(--card-row-h) + var(--title-lh) * var(--title-lines) + 2 * var(--card-row-gap));
+  --card-w: calc(4 * var(--card-h));
+  --card-gutter: calc(2 * var(--title-lh));
+  --column-gap: 24px;
+  --lane-pad-x: 24px;
+  --column-w: calc(var(--card-w) + 2 * var(--card-gutter));
+  /* Outer width of a swimlane: 3 columns + 2 gaps + side padding. */
+  --lane-w: calc(3 * var(--column-w) + 2 * var(--column-gap) + 2 * var(--lane-pad-x));
+}
+.card {
+  position: relative;
+  height: var(--card-h);
+  padding: var(--card-pad-y) var(--card-pad-x);
+}
+.card .card-top,
+.card .card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--card-row-h);
+  overflow: hidden;
+}
+.card .card-top { margin-bottom: var(--card-row-gap); }
 .card .card-labels {
   display: flex;
   gap: 4px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 .card .card-label-dot {
   width: 32px;
   height: 6px;
   border-radius: 3px;
 }
+.card .card-label {
+  flex-shrink: 0;
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  padding: 0 6px;
+  border-radius: 8px;
+  line-height: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .card .card-title {
   font-size: 14px;
   font-weight: 500;
-  margin-bottom: 6px;
+  line-height: var(--title-lh);
+  height: calc(var(--title-lh) * var(--title-lines));
+  margin-bottom: var(--card-row-gap);
   word-break: break-word;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: var(--title-lines);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
-.card-id-chip { font-size: 11px; color: #888; font-family: monospace; }
+.card-id-chip { font-size: 11px; color: #888; font-family: monospace; white-space: nowrap; flex-shrink: 0; }
 .card .card-meta {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   font-size: 11px;
   color: #5e6c84;
 }
-.card .card-assignee { }
-.card .card-due { margin-left: auto; }
+.card .card-assignee {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card .card-due { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
 .card .card-due.overdue { color: #e74c3c; font-weight: 600; }
 .card .card-due.missing,
 .card .card-assignee.missing { color: #172b4d; }
-.card { position: relative; }
 .card .card-checklist-bar {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
   font-size: 10px;
   color: #5e6c84;
 }
-.card:has(.card-checklist-bar) .card-title { padding-right: 70px; }
 .card .checklist-progress {
   width: 48px;
   height: 4px;
@@ -747,14 +780,27 @@ a { color: #0052cc; text-decoration: none; }
 }
 
 /* ── Label Colors ─────────────────────────────────────────────── */
-.label-red { background: #ef5350; }
-.label-orange { background: #ff9800; }
-.label-yellow { background: #ffca28; }
-.label-green { background: #66bb6a; }
-.label-blue { background: #42a5f5; }
-.label-purple { background: #ab47bc; }
-.label-pink { background: #ec407a; }
-.label-gray { background: #bdbdbd; }
+.label-c0 { background: #1e88e5; }
+.label-c1 { background: #43a047; }
+.label-c2 { background: #8e24aa; }
+.label-c3 { background: #fb8c00; }
+.label-c4 { background: #00897b; }
+.label-c5 { background: #d81b60; }
+.label-c6 { background: #5e35b1; }
+.label-c7 { background: #6d4c41; }
+.label-c8 { background: #00acc1; }
+.label-c9 { background: #7cb342; }
+.label-high-prio { background: #e53935; }
+
+/* High-prio cards: red edge + tint, wherever a card is rendered. */
+.card.high-prio {
+  background: #fff1f0;
+  box-shadow: inset 4px 0 0 #e53935, 0 1px 2px rgba(0,0,0,0.1);
+}
+.card.high-prio:hover { box-shadow: inset 4px 0 0 #e53935, 0 4px 12px rgba(0,0,0,0.15); }
+.card.high-prio .card-title { color: #a50e0e; }
+.dash-card.high-prio { background: #fff1f0; box-shadow: inset 4px 0 0 #e53935; }
+.table-view tr.high-prio td:first-child { box-shadow: inset 4px 0 0 #e53935; color: #a50e0e; font-weight: 600; }
 
 /* ── Dashboard View ───────────────────────────────────────────── */
 .dashboard-view {
@@ -906,6 +952,18 @@ a { color: #0052cc; text-decoration: none; }
 }
 #chat-sidebar[hidden] { display: none; }
 body.chat-open { padding-right: var(--chat-sidebar-w); }
+
+/* Kanban: grey out everything right of the swimlanes, from the top bar
+   down to the bottom of the page. The active area keeps the same 16px
+   margin on the right as on the left. */
+body.kanban-active {
+  --active-w: calc(16px + var(--lane-w) + 16px);
+  background: linear-gradient(to right, #f4f5f7 var(--active-w), #d5d8de var(--active-w));
+}
+body.kanban-active .top-bar,
+body.kanban-active .filter-bar {
+  background: linear-gradient(to right, #fff var(--active-w), #d5d8de var(--active-w));
+}
 .chat-header {
   padding: 12px 16px;
   border-bottom: 1px solid #dfe1e6;
@@ -1816,6 +1874,19 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 .btn-sm.danger:hover { background: #ffebe6; }
 
 /* Labels in modal */
+.high-prio-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: #5e6c84;
+  cursor: pointer;
+  user-select: none;
+}
+.high-prio-toggle input { accent-color: #e53935; cursor: pointer; margin: 0; }
+.high-prio-toggle.on { color: #c62828; }
 .modal-labels {
   display: flex;
   flex-wrap: wrap;
@@ -2142,7 +2213,7 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
 }
 </style>
 </head>
-<body>
+<body class="kanban-active">
 
 <!-- ── Splash screen (auto-dismisses after ~1.4s) ─────────────── -->
 <div id="flow-splash">
@@ -2176,7 +2247,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
       <input type="text" id="search-input" placeholder="Search cards... ( / )">
       <div class="search-dropdown" id="search-dropdown"></div>
     </div>
-    <button class="btn-new-card top-btn" id="btn-new-card">+ New Card</button>
     <button class="header-btn top-btn" id="btn-ask" disabled title="Configure API token in Settings">&#128172; Ask</button>
     <button class="header-btn top-btn" id="btn-process-notes" disabled title="Configure API token in Settings">&#128221; Process Notes</button>
     <button class="header-btn top-btn" id="btn-briefing" disabled title="Configure API token in Settings">&#128202; Briefing</button>
@@ -2269,7 +2339,6 @@ body.chat-open { padding-right: var(--chat-sidebar-w); }
       <div style="margin-bottom:16px;">
         <label class="field-label">List</label>
         <select id="nc-list" style="width:100%;padding:6px 10px;border:1px solid #dfe1e6;border-radius:4px;font-size:14px;">
-          <option value="ideas">Ideas</option>
           <option value="backlog" selected>Backlog</option>
           <option value="in-progress">In Progress</option>
           <option value="done">Done</option>
@@ -2538,15 +2607,27 @@ const state = {
 /* ================================================================
    Label Colors
    ================================================================ */
-const LABEL_COLORS = {
-  bug: 'label-red', urgent: 'label-red',
-  frontend: 'label-blue', backend: 'label-purple',
-  design: 'label-pink', feature: 'label-green',
-  docs: 'label-orange', testing: 'label-yellow',
-};
+// `high-prio` is a reserved label: shown as a checkbox in the card modal and
+// as a red card, never as a regular label chip. Every other label gets a
+// stable colour derived from its name, so the same label looks the same
+// everywhere without any configuration. Red is reserved for high-prio.
+const HIGH_PRIO_LABEL = 'high-prio';
+const LABEL_PALETTE_SIZE = 10;
+
+function isHighPrio(card) {
+  return Array.isArray(card.labels) && card.labels.includes(HIGH_PRIO_LABEL);
+}
+
+function visibleLabels(card) {
+  return (Array.isArray(card.labels) ? card.labels : []).filter(l => l !== HIGH_PRIO_LABEL);
+}
 
 function labelColorClass(label) {
-  return LABEL_COLORS[label.toLowerCase()] || 'label-gray';
+  const key = label.toLowerCase();
+  if (key === HIGH_PRIO_LABEL) return 'label-high-prio';
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return 'label-c' + (h % LABEL_PALETTE_SIZE);
 }
 
 /* ================================================================
@@ -3239,6 +3320,7 @@ function recordAgentMovesFromApply(selected, result) {
    ================================================================ */
 function switchView(view) {
   state.currentView = view;
+  document.body.classList.toggle('kanban-active', view === 'board');
   document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
   document.querySelectorAll('.view-switcher button').forEach(b => {
@@ -3277,24 +3359,6 @@ async function refreshCurrentView() {
 /* ================================================================
    Board View
    ================================================================ */
-async function moveBoard(slug, delta) {
-  const idx = state.boards.findIndex(b => b.slug === slug);
-  if (idx < 0) return;
-  const target = idx + delta;
-  if (target < 0 || target >= state.boards.length) return;
-  const reordered = [...state.boards];
-  const [moved] = reordered.splice(idx, 1);
-  reordered.splice(target, 0, moved);
-  state.boards = reordered;
-  const newOrder = reordered.map(b => b.slug);
-  try {
-    await api.put('/api/boards-order', newOrder);
-  } catch (err) {
-    console.error('Failed to save board order:', err);
-  }
-  await renderBoard();
-}
-
 let _renderBoardToken = 0;
 async function renderBoard() {
   const myToken = ++_renderBoardToken;
@@ -3327,22 +3391,15 @@ async function renderBoard() {
     const boardData = boardDataList[boardIdx];
     if (!boardData) continue;
     const lists = boardData.lists || {};
-    const listOrder = ['ideas', 'backlog', 'in-progress', 'done'];
+    const listOrder = ['backlog', 'in-progress', 'done'];
     const boardColor = boardData.color || '#4A90D9';
     const totalCards = listOrder.reduce((sum, l) => sum + (lists[l] || []).length, 0);
-    const isFirst = boardIdx === 0;
-    const isLast = boardIdx === state.boards.length - 1;
 
     const lane = document.createElement('div');
     lane.className = 'swimlane';
     lane.dataset.board = boardInfo.slug;
     lane.innerHTML = `
       <div class="swimlane-header">
-        <div class="swimlane-move-btns">
-          <button class="swimlane-move-btn move-up" title="Move up"${isFirst ? ' disabled' : ''}>&#x25B2;</button>
-          <button class="swimlane-move-btn move-down" title="Move down"${isLast ? ' disabled' : ''}>&#x25BC;</button>
-        </div>
-        <div class="swimlane-drag-handle" title="Drag to reorder">&#x2630;</div>
         <div class="swimlane-color" style="background:${escHtml(boardColor)}"></div>
         <span class="swimlane-toggle">&#x25BE;</span>
         <span class="swimlane-header-name" data-board="${escHtml(boardInfo.slug)}">${escHtml(boardData.name || boardInfo.slug)}</span>
@@ -3362,17 +3419,6 @@ async function renderBoard() {
     if (collapsedSet.includes(boardInfo.slug)) lane.classList.add('collapsed');
 
     const header = lane.querySelector('.swimlane-header');
-
-    const moveUpBtn = header.querySelector('.move-up');
-    const moveDownBtn = header.querySelector('.move-down');
-    moveUpBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      moveBoard(boardInfo.slug, -1);
-    });
-    moveDownBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      moveBoard(boardInfo.slug, 1);
-    });
 
     const delBtn = header.querySelector('.swimlane-delete');
     if (delBtn) {
@@ -3438,9 +3484,14 @@ async function renderBoard() {
       const col = document.createElement('div');
       col.className = 'board-column';
       col.dataset.list = listSlug;
+      // Mirrors janitor.DONE_RETENTION_DAYS.
+      const columnNote = listSlug === 'done'
+        ? '<span class="column-note" title="Done cards are archived 31 days after their last update">archived after 31 days</span>'
+        : '';
       col.innerHTML = `
         <div class="column-header">
           <span>${formatListName(listSlug)}</span>
+          ${columnNote}
           <span class="card-count">${cards.length}</span>
         </div>
         <div class="column-cards" data-list="${listSlug}" data-board="${escHtml(boardInfo.slug)}">
@@ -3468,8 +3519,6 @@ async function renderBoard() {
     container.appendChild(lane);
   }
 
-  setupSwimlaneDrag(container);
-
   const sidebar = document.getElementById('lane-sidebar');
   sidebar.innerHTML = '';
   container.querySelectorAll('.swimlane').forEach(lane => {
@@ -3494,118 +3543,33 @@ async function renderBoard() {
   });
 }
 
-function setupSwimlaneDrag(container) {
-  let draggedLane = null;
-
-  container.querySelectorAll('.swimlane').forEach(lane => {
-    const handle = lane.querySelector('.swimlane-drag-handle');
-
-    handle.addEventListener('mousedown', () => {
-      lane.draggable = true;
-    });
-
-    lane.addEventListener('mousedown', (e) => {
-      if (lane.classList.contains('collapsed') && !e.target.closest('.swimlane-toggle') && !e.target.closest('.swimlane-header-name')) {
-        lane.draggable = true;
-      }
-    });
-
-    lane.addEventListener('dragstart', (e) => {
-      if (!e.target.classList.contains('swimlane')) return;
-      draggedLane = lane;
-      lane.classList.add('dragging-lane');
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', lane.dataset.board);
-      startDragAutoScroll();
-    });
-
-    lane.addEventListener('dragend', () => {
-      lane.draggable = false;
-      lane.classList.remove('dragging-lane');
-      container.querySelectorAll('.swimlane').forEach(l => {
-        l.classList.remove('drop-target-above', 'drop-target-below');
-      });
-      draggedLane = null;
-      stopDragAutoScroll();
-    });
-  });
-
-  container.querySelectorAll('.swimlane').forEach(lane => {
-    lane.addEventListener('dragover', (e) => {
-      if (!draggedLane || draggedLane === lane) return;
-      // Only handle swimlane drags, not card drags
-      if (!draggedLane.classList.contains('swimlane')) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      const rect = lane.getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      lane.classList.remove('drop-target-above', 'drop-target-below');
-      if (e.clientY < midY) {
-        lane.classList.add('drop-target-above');
-      } else {
-        lane.classList.add('drop-target-below');
-      }
-    });
-
-    lane.addEventListener('dragleave', () => {
-      lane.classList.remove('drop-target-above', 'drop-target-below');
-    });
-
-    lane.addEventListener('drop', async (e) => {
-      if (!draggedLane || draggedLane === lane) return;
-      if (!draggedLane.classList.contains('swimlane')) return;
-      e.preventDefault();
-      lane.classList.remove('drop-target-above', 'drop-target-below');
-
-      const rect = lane.getBoundingClientRect();
-      const midY = rect.top + rect.height / 2;
-      if (e.clientY < midY) {
-        container.insertBefore(draggedLane, lane);
-      } else {
-        container.insertBefore(draggedLane, lane.nextSibling);
-      }
-
-      // Persist new order
-      const newOrder = [...container.querySelectorAll('.swimlane')].map(l => l.dataset.board);
-      const bySlug = Object.fromEntries(state.boards.map(b => [b.slug, b]));
-      state.boards = newOrder.map(s => bySlug[s]).filter(Boolean);
-      try {
-        await api.put('/api/boards-order', newOrder);
-      } catch (err) {
-        console.error('Failed to save board order:', err);
-      }
-    });
-  });
-}
-
 function createCardElement(card) {
   const cardEl = document.createElement('div');
-  cardEl.className = 'card';
+  cardEl.className = isHighPrio(card) ? 'card high-prio' : 'card';
   cardEl.draggable = true;
   cardEl.dataset.card = card.slug;
   cardEl.dataset.board = card.board;
   cardEl.dataset.list = card.list;
 
-  const cl = parseChecklistFromBody(card);
-  let checkHtml = '';
-  if (cl.total > 0) {
-    const pct = Math.round((cl.done / cl.total) * 100);
-    checkHtml = `<span class="card-checklist-bar" title="${cl.done} of ${cl.total} done">
-      <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
-      <span>${cl.done}/${cl.total}</span>
-    </span>`;
-  }
-
   const assignee = typeof card.assignee === 'string' ? card.assignee : '';
   const due = typeof card.due === 'string' ? card.due : '';
-  const dueClass = due ? (isOverdue(due) && card.list !== 'done' ? 'overdue' : '') : 'missing';
-  const assigneeHtml = assignee
-    ? `<span class="card-assignee">${escHtml(assignee)}</span>`
-    : `<span class="card-assignee missing">Unassigned</span>`;
-  const dueHtml = `<span class="card-due ${dueClass}">${due ? formatDate(due) : 'No due-date'}</span>`;
-  const metaHtml = `<div class="card-meta">${assigneeHtml}${dueHtml}</div>`;
+  const dueClass = due ? (isOverdue(due) && card.list !== 'done' ? ' overdue' : '') : ' missing';
+  const labelsHtml = visibleLabels(card)
+    .map(l => `<span class="card-label ${labelColorClass(l)}" title="${escHtml(l)}">${escHtml(l)}</span>`)
+    .join('');
 
-  cardEl.innerHTML = `${checkHtml}<div class="card-title"><span class="card-id-chip">${escHtml(card.id || card.slug)}</span><span>${escHtml(card.title)}</span></div>${metaHtml}`;
+  // Every slot is always present (possibly empty) so card height is fixed.
+  cardEl.innerHTML = `
+    <div class="card-top">
+      <span class="card-id-chip">${escHtml(card.id || card.slug)}</span>
+      <div class="card-labels">${labelsHtml}</div>
+      <span class="card-checklist-bar">${checklistBarHtml(card)}</span>
+    </div>
+    <div class="card-title" title="${escHtml(card.title)}">${escHtml(card.title)}</div>
+    <div class="card-meta">
+      <span class="card-assignee${assignee ? '' : ' missing'}" title="${escHtml(assignee)}">${assignee ? escHtml(assignee) : 'Unassigned'}</span>
+      <span class="card-due${dueClass}">${due ? formatDate(due) : 'No due-date'}</span>
+    </div>`;
 
   cardEl.addEventListener('click', () => {
     const currentBoard = cardEl.dataset.board;
@@ -3708,8 +3672,6 @@ function showDropIndicator(container, y) {
 
 function setupDropZone(cardsContainer) {
   cardsContainer.addEventListener('dragover', (e) => {
-    // Check if this is a swimlane drag (not a card drag) — ignore it
-    if (document.querySelector('.swimlane.dragging-lane')) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -3723,7 +3685,6 @@ function setupDropZone(cardsContainer) {
     }
   });
   cardsContainer.addEventListener('drop', async (e) => {
-    if (document.querySelector('.swimlane.dragging-lane')) return;
     e.preventDefault();
     e.stopPropagation();
     cardsContainer.classList.remove('drag-over');
@@ -3849,14 +3810,14 @@ async function renderDashboard() {
       for (const [board, boardCards] of Object.entries(groups)) {
         html += `<div class="dash-group-title">${escHtml(board)}</div>`;
         for (const c of boardCards) {
-          const labels = Array.isArray(c.labels) ? c.labels : [];
+          const labels = visibleLabels(c);
           const labelDots = labels.map(l => `<div class="dash-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('');
           const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
           const assignee = (c.assignee || '').trim();
           const assigneeHtml = assignee
             ? `<span class="dash-assignee" title="${escHtml(assignee)}">${escHtml(assignee)}</span>`
             : '<span class="dash-assignee dash-assignee-empty" title="Unassigned">—</span>';
-          html += `<div class="dash-card" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}" data-due="${escHtml(c.due || '')}">
+          html += `<div class="dash-card${isHighPrio(c) ? ' high-prio' : ''}" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}" data-due="${escHtml(c.due || '')}">
             <div class="dash-labels">${labelDots}</div>
             <span class="dash-title">${escHtml(c.title)}</span>
             <span class="dash-list">${formatListName(c.list)}</span>
@@ -3983,25 +3944,19 @@ async function renderDashboard() {
   });
 }
 
+function checklistBarHtml(card) {
+  const cl = parseChecklistFromBody(card);
+  if (cl.total === 0) return '';
+  const pct = Math.round((cl.done / cl.total) * 100);
+  return `<div class="checklist-progress" title="${cl.done} of ${cl.total} done"><div class="checklist-progress-fill" style="width:${pct}%"></div></div><span>${cl.done}/${cl.total}</span>`;
+}
+
 function updateCardChecklistBar(board, list, slug, card) {
   const cardEl = document.querySelector(
     `.card[data-board="${CSS.escape(board)}"][data-list="${CSS.escape(list)}"][data-card="${CSS.escape(slug)}"]`
   );
-  if (!cardEl) return;
-  const oldBar = cardEl.querySelector(':scope > .card-checklist-bar');
-  if (oldBar) oldBar.remove();
-  const cl = parseChecklistFromBody(card);
-  if (cl.total > 0) {
-    const pct = Math.round((cl.done / cl.total) * 100);
-    const span = document.createElement('span');
-    span.className = 'card-checklist-bar';
-    span.title = `${cl.done} of ${cl.total} done`;
-    span.innerHTML = `
-      <div class="checklist-progress"><div class="checklist-progress-fill" style="width:${pct}%"></div></div>
-      <span>${cl.done}/${cl.total}</span>`;
-    const titleEl = cardEl.querySelector('.card-title');
-    cardEl.insertBefore(span, titleEl);
-  }
+  const bar = cardEl && cardEl.querySelector('.card-checklist-bar');
+  if (bar) bar.innerHTML = checklistBarHtml(card);
 }
 
 function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
@@ -4250,10 +4205,10 @@ async function renderTable() {
     </tr></thead><tbody>`;
 
   for (const c of allCards) {
-    const labels = Array.isArray(c.labels) ? c.labels : [];
+    const labels = visibleLabels(c);
     const labelsHtml = labels.map(l => `<span class="table-label ${labelColorClass(l)}">${escHtml(l)}</span>`).join('');
     const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
-    html += `<tr data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
+    html += `<tr${isHighPrio(c) ? ' class="high-prio"' : ''} data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}">
       <td>${escHtml(c.title)}</td>
       <td>${escHtml(c._boardName || c.board)}</td>
       <td>${formatListName(c.list)}</td>
@@ -4325,6 +4280,8 @@ function flashSaved() {
 function renderModal(card) {
   const body = document.getElementById('modal-body');
   const labels = Array.isArray(card.labels) ? card.labels : [];
+  const shownLabels = visibleLabels(card);
+  const highPrio = isHighPrio(card);
   const description = parseDescription(card.body || '');
   const checklist = parseChecklistItems(card.body || '');
   const comments = parseComments(card.body || '');
@@ -4351,10 +4308,14 @@ function renderModal(card) {
   </div>`;
 
   // Labels
-  html += `<div class="modal-section${labels.length ? '' : ' empty'}">
-    <div class="modal-section-title">Labels</div>
+  html += `<div class="modal-section${shownLabels.length ? '' : ' empty'}">
+    <div class="modal-section-title">Labels
+      <label class="high-prio-toggle${highPrio ? ' on' : ''}" title="Mark as high priority">
+        <input type="checkbox" id="modal-high-prio"${highPrio ? ' checked' : ''} /> High prio
+      </label>
+    </div>
     <div class="modal-labels" id="modal-labels">`;
-  for (const l of labels) {
+  for (const l of shownLabels) {
     html += `<span class="modal-label-tag ${labelColorClass(l)}">${escHtml(l)} <button class="remove-label" data-label="${escHtml(l)}">&times;</button></span>`;
   }
   html += `<input class="add-label-input" id="add-label-input" placeholder="Add label…" />`;
@@ -4524,6 +4485,16 @@ function renderModal(card) {
       renderModal(updated);
       refreshCurrentView();
     });
+  });
+
+  // High-prio toggle (stored as the reserved `high-prio` label)
+  document.getElementById('modal-high-prio').addEventListener('change', async (e) => {
+    const rest = labels.filter(l => l !== HIGH_PRIO_LABEL);
+    const newLabels = e.target.checked ? [HIGH_PRIO_LABEL, ...rest] : rest;
+    const updated = await api.put(`/api/cards/${cardPath.board}/${cardPath.list}/${cardPath.slug}`, { labels: newLabels });
+    state.modalCard = updated;
+    renderModal(updated);
+    refreshCurrentView();
   });
 
   // Add label
@@ -5048,7 +5019,6 @@ document.getElementById('nc-title').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('nc-submit').click();
 });
 
-document.getElementById('btn-new-card').addEventListener('click', openNewCardDialog);
 document.getElementById('btn-undo').addEventListener('click', () => undo());
 document.getElementById('btn-redo').addEventListener('click', () => redo());
 
@@ -7509,10 +7479,6 @@ document.addEventListener('keydown', (e) => {
     case '3': switchView('calendar'); break;
     case '4': switchView('table'); break;
     case '5': switchView('memory'); break;
-    case 'n':
-    case 'N':
-      document.getElementById('btn-new-card').click();
-      break;
     case '/':
       e.preventDefault();
       searchInput.focus();
@@ -7528,7 +7494,7 @@ document.addEventListener('keydown', (e) => {
   const pan = document.getElementById('board-columns');
   if (!pan) return;
   let active = false, lastClientX = 0, lastClientY = 0;
-  const interactive = 'card,button,input,textarea,select,a,.column-cards,.swimlane-drag-handle,.board-edit-popover,.swimlane-header-name';
+  const interactive = 'card,button,input,textarea,select,a,.column-cards,.board-edit-popover,.swimlane-header-name';
 
   pan.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;

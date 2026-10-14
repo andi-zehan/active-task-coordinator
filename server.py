@@ -46,7 +46,7 @@ def _resolve_data_dir() -> Path:
 
 
 DATA_DIR = _resolve_data_dir()
-LISTS = ["ideas", "backlog", "in-progress", "done"]
+LISTS = ["backlog", "in-progress", "done"]
 
 
 def _apply_mixed(operations, note_id):
@@ -894,6 +894,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._send_json(cards)
 
     def _handle_create_card(self, board_slug, list_slug):
+        if list_slug not in LISTS:
+            return self._send_error(400, f"unknown list '{list_slug}'")
         data = self._read_body()
         title = data.get('title', '').strip()
         if not title:
@@ -1007,6 +1009,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         target_list = data.get('target_list', '').strip()
         if not target_list:
             return self._send_error(400, 'target_list is required')
+        if target_list not in LISTS:
+            return self._send_error(400, f"unknown list '{target_list}'")
         target_board = data.get('target_board', board_slug).strip()
         position = data.get('position', -1)
 
@@ -1016,7 +1020,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         src_order = [s for s in src_order if s != card_slug]
         write_json(src_order_path, src_order)
 
-        # Move the file, bumping `updated` so the janitor's 14-day archive
+        # Move the file, bumping `updated` so the janitor's 31-day archive
         # clock restarts on every move (without this, moving an old card to
         # 'done' could trigger immediate archival on the next janitor pass).
         src_path = DATA_DIR / "boards" / board_slug / list_slug / f"{card_slug}.md"
@@ -1869,6 +1873,15 @@ if __name__ == '__main__':
             sync_config.set_skip_next_pull(False)
 
     ensure_data_dir()
+
+    # The `ideas` list was retired; fold any remaining cards into backlog.
+    try:
+        import migration
+        folded = migration.fold_ideas_into_backlog()
+        if folded["cards_moved"]:
+            print(f"migration: moved {folded['cards_moved']} ideas card(s) to backlog", flush=True)
+    except Exception as e:
+        print(f"migration: ideas fold failed: {e}", flush=True)
 
     # Initialize the memory wiki on first run (idempotent).
     try:

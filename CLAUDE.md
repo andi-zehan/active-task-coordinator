@@ -37,7 +37,7 @@ There is no linter, formatter, or type-checker configured. Don't add one without
 `instructions.md` is the authoritative spec for the on-disk layout: folder structure under `data/`, frontmatter fields, body sections (`## Description` / `## Checklist` / `## Comments`), `_order.json` files, and the `[[C-12]]` cross-link syntax. Treat it as ground truth; don't reinvent the format from reading code.
 
 Key invariants the parser/serializer assume:
-- Every board has exactly four lists: `ideas`, `backlog`, `in-progress`, `done`.
+- Every board has exactly three lists: `backlog`, `in-progress`, `done`. (A retired `ideas` list is folded into `backlog` at startup by `migration.fold_ideas_into_backlog`.)
 - Card body has the three section headers in fixed order, even when empty.
 - Each list folder owns an `_order.json` with the display order of card slugs; the root has `_boards-order.json`.
 - Every card has a global ID `C-N`. Slugs are filenames; IDs are stable identifiers used by the API, the LLM tools, and `[[C-N]]` links.
@@ -83,7 +83,7 @@ Read-tool results are cached per-batch via a thread-local (`chat_tools._cache`) 
 ### `data_repo.py` + janitor
 `data_repo.py` is the only module that runs `git` against `data/`. `server.py` calls `data_repo.set_data_dir(DATA_DIR)` at import time so this module stays decoupled from the data-dir resolution logic. Sync behavior is mode-aware (`off`/`local`/`remote`); `transition_sets_skip_pull` in `sync_config.py` documents when an auto-pull is suppressed.
 
-`janitor.py` runs once at startup and then every 24h on a daemon thread. It archives `done` cards older than 14 days into `data/_archive/<board>/<YYYY-MM>/` (along with their referenced notes) and deletes orphan notes. When archiving, it strips back-references on live cards via `_sync_back_relations` — so "archived" effectively equals "removed from the live graph".
+`janitor.py` runs once at startup and then every 24h on a daemon thread. It archives `done` cards older than 31 days (`janitor.DONE_RETENTION_DAYS`) into `data/_archive/<board>/<YYYY-MM>/` (along with their referenced notes) and deletes orphan notes. When archiving, it strips back-references on live cards via `_sync_back_relations` — so "archived" effectively equals "removed from the live graph".
 
 ### Frontend
 `index.html` is a single ~170KB file (vanilla HTML/JS/CSS, no bundler). It calls the same `/api/...` endpoints used by tests. `[[C-N]]` rendering, the typeahead picker, and the dashboard buckets (`bucket_cards_by_due` in server.py) are server-driven.

@@ -42,20 +42,20 @@ class TestRepairRelations(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def test_scan_finds_missing_back_reference(self):
-        _write_card("b", "ideas", "C-1", relations=["C-2"])
-        _write_card("b", "ideas", "C-2")  # missing back-ref to C-1
+        _write_card("b", "backlog", "C-1", relations=["C-2"])
+        _write_card("b", "backlog", "C-2")  # missing back-ref to C-1
         result = repair_relations.scan()
         self.assertEqual(result["fixes"], [{"add": "C-1", "to": "C-2"}])
         self.assertEqual(result["unresolved"], [])
 
     def test_scan_skips_when_back_reference_already_present(self):
-        _write_card("b", "ideas", "C-1", relations=["C-2"])
-        _write_card("b", "ideas", "C-2", relations=["C-1"])
+        _write_card("b", "backlog", "C-1", relations=["C-2"])
+        _write_card("b", "backlog", "C-2", relations=["C-1"])
         result = repair_relations.scan()
         self.assertEqual(result["fixes"], [])
 
     def test_scan_reports_unresolved_id(self):
-        _write_card("b", "ideas", "C-1", relations=["C-99"])
+        _write_card("b", "backlog", "C-1", relations=["C-99"])
         result = repair_relations.scan()
         self.assertEqual(result["fixes"], [])
         self.assertEqual(result["unresolved"],
@@ -63,36 +63,36 @@ class TestRepairRelations(unittest.TestCase):
 
     def test_scan_dedupes_when_both_sides_missing(self):
         # Neither side knows about the other — should produce one fix, not two.
-        _write_card("b", "ideas", "C-1", relations=["C-2"])
-        _write_card("b", "ideas", "C-2")
+        _write_card("b", "backlog", "C-1", relations=["C-2"])
+        _write_card("b", "backlog", "C-2")
         result = repair_relations.scan()
         self.assertEqual(len(result["fixes"]), 1)
 
     def test_scan_ignores_self_reference(self):
-        _write_card("b", "ideas", "C-1", relations=["C-1"])
+        _write_card("b", "backlog", "C-1", relations=["C-1"])
         result = repair_relations.scan()
         self.assertEqual(result["fixes"], [])
         self.assertEqual(result["unresolved"], [])
 
     def test_apply_writes_back_reference(self):
-        _write_card("b", "ideas", "C-1", relations=["C-2"])
-        _write_card("b", "ideas", "C-2")
+        _write_card("b", "backlog", "C-1", relations=["C-2"])
+        _write_card("b", "backlog", "C-2")
         result = repair_relations.scan()
         written = repair_relations.apply_fixes(result["fixes"])
         self.assertEqual(written, 1)
-        c2 = server.read_card("b", "ideas", "C-2")
+        c2 = server.read_card("b", "backlog", "C-2")
         self.assertEqual(c2["relations"], ["C-1"])
 
     def test_apply_is_idempotent(self):
-        _write_card("b", "ideas", "C-1", relations=["C-2"])
-        _write_card("b", "ideas", "C-2")
+        _write_card("b", "backlog", "C-1", relations=["C-2"])
+        _write_card("b", "backlog", "C-2")
         repair_relations.apply_fixes(repair_relations.scan()["fixes"])
         # Second pass should find nothing.
         result = repair_relations.scan()
         self.assertEqual(result["fixes"], [])
 
     def test_apply_works_across_boards(self):
-        _write_card("ba", "ideas", "C-1", relations=["C-2"])
+        _write_card("ba", "backlog", "C-1", relations=["C-2"])
         _write_card("bb", "backlog", "C-2")
         repair_relations.apply_fixes(repair_relations.scan()["fixes"])
         c2 = server.read_card("bb", "backlog", "C-2")

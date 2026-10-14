@@ -10,17 +10,15 @@ data/
   boards/
     <board-slug>/
       _board.md                   # Board metadata
-      ideas/_order.json           # Card display order for this list
-      ideas/<card-slug>.md        # One file per card
-      backlog/_order.json
-      backlog/<card-slug>.md
+      backlog/_order.json         # Card display order for this list
+      backlog/<card-slug>.md      # One file per card
       in-progress/_order.json
       in-progress/<card-slug>.md
       done/_order.json
       done/<card-slug>.md
 ```
 
-Every board has exactly four lists: `ideas`, `backlog`, `in-progress`, `done`.
+Every board has exactly three lists: `backlog`, `in-progress`, `done`.
 
 ## Slugs
 
@@ -134,7 +132,7 @@ The root `data/_boards-order.json` contains board slugs in display order:
 
 1. Create folder `data/boards/<slug>/`
 2. Create `_board.md` with frontmatter
-3. Create four subfolders: `ideas/`, `backlog/`, `in-progress/`, `done/`
+3. Create three subfolders: `backlog/`, `in-progress/`, `done/`
 4. Create `_order.json` in each subfolder with `[]`
 5. Append the slug to `data/_boards-order.json`
 

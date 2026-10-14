@@ -29,7 +29,7 @@ def make_board(data_dir, slug, name="Test"):
     board_dir.mkdir(parents=True, exist_ok=True)
     (board_dir / "_board.md").write_text(
         f"---\nname: {name}\ncolor: '#000000'\n---\n", encoding="utf-8")
-    for lst in ("ideas", "backlog", "in-progress", "done"):
+    for lst in ("backlog", "in-progress", "done"):
         (board_dir / lst).mkdir(exist_ok=True)
         (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
     boards_order = data_dir / "_boards-order.json"
@@ -169,19 +169,19 @@ class TestGetCardById(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     def test_get_card_by_id_returns_card(self):
-        server.write_card("b", "ideas", "C-1", {
+        server.write_card("b", "backlog", "C-1", {
             "id": "C-1", "title": "Hello", "labels": [], "due": "",
             "assignee": "", "created": "2026-05-07", "updated": "2026-05-07",
             "relations": [], "custom_fields": {}, "attachments": [],
         }, "## Description\n\nbody\n")
-        order = server.DATA_DIR / "boards" / "b" / "ideas" / "_order.json"
+        order = server.DATA_DIR / "boards" / "b" / "backlog" / "_order.json"
         order.write_text('["C-1"]', encoding="utf-8")
-        server.register_id("C-1", "b", "ideas")
+        server.register_id("C-1", "b", "backlog")
 
         result = chat_tools.READ_TOOLS["get_card_by_id"]({"id": "C-1"})
         self.assertEqual(result["title"], "Hello")
         self.assertEqual(result["board"], "b")
-        self.assertEqual(result["list"], "ideas")
+        self.assertEqual(result["list"], "backlog")
 
     def test_get_card_by_id_unknown(self):
         result = chat_tools.READ_TOOLS["get_card_by_id"]({"id": "C-99"})

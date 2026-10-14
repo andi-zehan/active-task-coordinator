@@ -1,4 +1,4 @@
-"""Periodic cleanup: archive done cards older than 14 days, delete orphan notes.
+"""Periodic cleanup: archive done cards older than 31 days, delete orphan notes.
 
 Archived cards are moved to data/_archive/<board>/<YYYY-MM>/<slug>.md so they
 disappear from any board (and from the agent's view) but remain on disk for
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import server
 
-DONE_RETENTION_DAYS = 14
+DONE_RETENTION_DAYS = 31
 NOTES_DIR = Path(__file__).parent / "notes"
 NOTE_URL_PREFIX = "/api/notes/"
 
@@ -79,7 +79,7 @@ def _archive_card(board: str, slug: str, updated: date) -> None:
 
 
 def sweep_done_cards() -> int:
-    """Archive cards in 'done' lists whose updated date is > 14 days ago.
+    """Archive cards in 'done' lists whose updated date is > 31 days ago.
 
     Returns the count of archived cards.
     """

@@ -21,7 +21,7 @@ def reset_read_cache() -> None:
     _cache.all_cards = None
 
 
-_LIST_ENUM = ["ideas", "backlog", "in-progress", "done"]
+_LIST_ENUM = ["backlog", "in-progress", "done"]
 _CONF_ENUM = ["high", "med", "low"]
 
 

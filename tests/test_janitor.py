@@ -17,7 +17,7 @@ def make_board(data_dir: Path, slug: str = "alpha"):
     board_dir = data_dir / "boards" / slug
     board_dir.mkdir(parents=True, exist_ok=True)
     (board_dir / "_board.md").write_text("---\nname: A\ncolor: '#000'\n---\n", encoding="utf-8")
-    for lst in ("ideas", "backlog", "in-progress", "done"):
+    for lst in ("backlog", "in-progress", "done"):
         (board_dir / lst).mkdir(exist_ok=True)
         (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
     boards_order = data_dir / "_boards-order.json"
@@ -66,7 +66,7 @@ class TestSweepDoneCards(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_old_done_card_archived(self):
-        old_date = date.today() - timedelta(days=15)
+        old_date = date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)
         old = old_date.isoformat()
         make_card(self.data_dir, "alpha", "done", "old-task", old)
         archived = janitor.sweep_done_cards()
@@ -80,7 +80,7 @@ class TestSweepDoneCards(unittest.TestCase):
         )
 
     def test_archived_card_preserves_content(self):
-        old_date = date.today() - timedelta(days=20)
+        old_date = date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)
         make_card(self.data_dir, "alpha", "done", "preserve-me", old_date.isoformat())
         original = (self.data_dir / "boards/alpha/done/preserve-me.md").read_text(
             encoding="utf-8"
@@ -100,20 +100,20 @@ class TestSweepDoneCards(unittest.TestCase):
         self.assertTrue((self.data_dir / "boards/alpha/done/recent-task.md").exists())
         self.assertFalse((self.data_dir / "_archive").exists())
 
-    def test_exactly_14_days_kept(self):
-        edge = (date.today() - timedelta(days=14)).isoformat()
+    def test_exactly_retention_days_kept(self):
+        edge = (date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS)).isoformat()
         make_card(self.data_dir, "alpha", "done", "edge-task", edge)
         archived = janitor.sweep_done_cards()
         self.assertEqual(archived, 0)
 
-    def test_15_days_archived(self):
-        edge = (date.today() - timedelta(days=15)).isoformat()
+    def test_retention_plus_one_archived(self):
+        edge = (date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 1)).isoformat()
         make_card(self.data_dir, "alpha", "done", "edge-task", edge)
         archived = janitor.sweep_done_cards()
         self.assertEqual(archived, 1)
 
     def test_card_in_other_list_not_touched(self):
-        old = (date.today() - timedelta(days=30)).isoformat()
+        old = (date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 10)).isoformat()
         make_card(self.data_dir, "alpha", "backlog", "old-backlog", old)
         archived = janitor.sweep_done_cards()
         self.assertEqual(archived, 0)
@@ -126,7 +126,7 @@ class TestSweepDoneCards(unittest.TestCase):
         self.assertTrue((self.data_dir / "boards/alpha/done/bad-date.md").exists())
 
     def test_referenced_notes_moved_to_archive(self):
-        old_date = date.today() - timedelta(days=20)
+        old_date = date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)
         note_id = "2026-04-01-src"
         (self.notes_dir / f"{note_id}.md").write_text(
             f"---\ndate: 2026-04-01\ntitle: x\napplied_ops: []\n---\n\nbody\n",
@@ -165,7 +165,7 @@ class TestSweepDoneCards(unittest.TestCase):
 
     def test_archive_strips_back_references_on_live_cards(self):
         server.reset_id_index()
-        old = (date.today() - timedelta(days=20)).isoformat()
+        old = (date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)).isoformat()
         recent = (date.today() - timedelta(days=2)).isoformat()
         # C-1 lives in done (will be archived), C-2 is live and points back at it.
         self._make_card_with_id("alpha", "done", "C-1", updated=old, relations=["C-2"])
@@ -177,7 +177,7 @@ class TestSweepDoneCards(unittest.TestCase):
 
     def test_archived_card_keeps_outgoing_relations(self):
         server.reset_id_index()
-        old_date = date.today() - timedelta(days=20)
+        old_date = date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)
         recent = (date.today() - timedelta(days=2)).isoformat()
         self._make_card_with_id("alpha", "done", "C-1",
                                  updated=old_date.isoformat(), relations=["C-2"])
@@ -192,7 +192,7 @@ class TestSweepDoneCards(unittest.TestCase):
 
     def test_archive_unregisters_id(self):
         server.reset_id_index()
-        old = (date.today() - timedelta(days=20)).isoformat()
+        old = (date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)).isoformat()
         self._make_card_with_id("alpha", "done", "C-1", updated=old)
         self.assertIsNotNone(server.resolve_id("C-1"))
         janitor.sweep_done_cards()
@@ -200,7 +200,7 @@ class TestSweepDoneCards(unittest.TestCase):
 
     def test_orphan_sweep_does_not_touch_archived_notes(self):
         """Note moved into archive should survive a subsequent orphan sweep."""
-        old_date = date.today() - timedelta(days=20)
+        old_date = date.today() - timedelta(days=janitor.DONE_RETENTION_DAYS + 5)
         note_id = "2026-04-01-protected"
         (self.notes_dir / f"{note_id}.md").write_text(
             f"---\ndate: 2026-04-01\ntitle: x\napplied_ops: []\n---\n\nbody\n",

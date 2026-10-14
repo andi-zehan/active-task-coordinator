@@ -31,7 +31,7 @@ def make_board(data_dir: Path, slug: str, name: str = "Test Board"):
     (board_dir / "_board.md").write_text(
         f"---\nname: {name}\ncolor: '#000000'\n---\n", encoding="utf-8"
     )
-    for lst in ("ideas", "backlog", "in-progress", "done"):
+    for lst in ("backlog", "in-progress", "done"):
         (board_dir / lst).mkdir(exist_ok=True)
         (board_dir / lst / "_order.json").write_text("[]", encoding="utf-8")
     boards_order = data_dir / "_boards-order.json"
@@ -462,7 +462,7 @@ class TestApply(unittest.TestCase):
         ops = [
             {"op": "create_card", "board": "alpha", "list": "backlog", "title": "Good"},
             {"op": "add_comment", "board": "alpha", "list": "backlog", "card": "ghost", "text": "x"},
-            {"op": "create_card", "board": "alpha", "list": "ideas", "title": "Also good"},
+            {"op": "create_card", "board": "alpha", "list": "in-progress", "title": "Also good"},
         ]
         result = notes.apply_operations(ops, self.note_id)
         self.assertEqual(len(result["applied"]), 2)
@@ -497,13 +497,13 @@ class TestApply(unittest.TestCase):
         server.register_id(cid, "alpha", "backlog")
 
         ops = [
-            {"op": "move_card", "id": cid, "target_list": "ideas"},
+            {"op": "move_card", "id": cid, "target_list": "in-progress"},
             {"op": "update_field", "id": cid, "field": "assignee", "value": "Andi"},
         ]
         result = notes.apply_operations(ops, None)
         self.assertEqual(len(result["applied"]), 2, msg=str(result))
         self.assertEqual(result["skipped"], [])
-        moved = server.read_card("alpha", "ideas", cid)
+        moved = server.read_card("alpha", "in-progress", cid)
         self.assertIsNotNone(moved)
         self.assertEqual(moved["assignee"], "Andi")
 
@@ -532,13 +532,13 @@ class TestApply(unittest.TestCase):
 
     def test_do_create_card_uses_id_as_filename(self):
         server.reset_id_index()
-        op = {"op": "create_card", "board": "alpha", "list": "ideas",
+        op = {"op": "create_card", "board": "alpha", "list": "backlog",
               "title": "Foo", "description": "", "checklist": []}
         result = notes.apply_operations([op], note_id="")
         self.assertEqual(len(result["applied"]), 1)
         # Target should be board/list/C-1
         self.assertTrue(result["applied"][0]["target"].endswith("/C-1"))
-        path = self.data_dir / "boards" / "alpha" / "ideas" / "C-1.md"
+        path = self.data_dir / "boards" / "alpha" / "backlog" / "C-1.md"
         self.assertTrue(path.exists())
 
 
@@ -555,7 +555,7 @@ class TestApplyOpsById(unittest.TestCase):
         server.DATA_DIR = self.orig_data_dir
         shutil.rmtree(self.tmp)
 
-    def _seed_card(self, list_slug="ideas", title="t", body="## Description\n\n\n## Checklist\n\n- [ ] foo\n\n## Comments\n\n"):
+    def _seed_card(self, list_slug="in-progress", title="t", body="## Description\n\n\n## Checklist\n\n- [ ] foo\n\n## Comments\n\n"):
         cid = server.next_id()
         server.write_card("b", list_slug, cid, {
             "id": cid, "title": title, "labels": [], "due": "",
@@ -581,9 +581,9 @@ class TestApplyOpsById(unittest.TestCase):
         result = notes.apply_operations(
             [{"op": "move_card", "id": cid, "target_list": "backlog"}], note_id="")
         self.assertEqual(len(result["applied"]), 1)
-        # File now in backlog/, gone from ideas/
+        # File now in backlog/, gone from in-progress/
         self.assertTrue((server.DATA_DIR / "boards" / "b" / "backlog" / f"{cid}.md").exists())
-        self.assertFalse((server.DATA_DIR / "boards" / "b" / "ideas" / f"{cid}.md").exists())
+        self.assertFalse((server.DATA_DIR / "boards" / "b" / "in-progress" / f"{cid}.md").exists())
 
     def test_rename_card_by_id(self):
         cid = self._seed_card(title="Old")
@@ -591,7 +591,7 @@ class TestApplyOpsById(unittest.TestCase):
             [{"op": "rename_card", "id": cid, "title": "New"}], note_id="")
         self.assertEqual(len(result["applied"]), 1)
         # Same file, new title.
-        card = server.read_card("b", "ideas", cid)
+        card = server.read_card("b", "in-progress", cid)
         self.assertEqual(card["title"], "New")
 
     def test_unknown_id_skipped(self):
@@ -601,7 +601,7 @@ class TestApplyOpsById(unittest.TestCase):
         self.assertEqual(len(result["skipped"]), 1)
 
     def test_move_then_update_follows_relocation(self):
-        cid = self._seed_card()
+        cid = self._seed_card(list_slug="backlog")
         ops = [
             {"op": "move_card", "id": cid, "target_list": "in-progress"},
             {"op": "update_field", "id": cid, "field": "assignee", "value": "Alice"},

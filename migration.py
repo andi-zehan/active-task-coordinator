@@ -121,3 +121,49 @@ def _migrate_one(board, list_slug, list_dir, slug, path_map) -> str:
         card_path.unlink()
     path_map[(board, list_slug, slug)] = card_id
     return card_id
+
+
+def fold_ideas_into_backlog() -> dict:
+    """Move every card from the retired `ideas` list to the end of `backlog`.
+
+    Ideas cards keep their file names (IDs) and are appended after the
+    existing backlog cards in their previous display order. The emptied
+    `ideas/` folder is removed. Idempotent: a no-op once no `ideas/` exists.
+    """
+    moved = 0
+    boards_dir = server.DATA_DIR / "boards"
+    if not boards_dir.exists():
+        return {"cards_moved": 0}
+    for board_dir in sorted(boards_dir.iterdir()):
+        ideas_dir = board_dir / "ideas"
+        if not board_dir.is_dir() or not ideas_dir.is_dir():
+            continue
+        backlog_dir = board_dir / "backlog"
+        backlog_dir.mkdir(parents=True, exist_ok=True)
+        ideas_order = _read_order(ideas_dir)
+        on_disk = sorted(p.stem for p in ideas_dir.glob("*.md"))
+        slugs = [s for s in ideas_order if s in on_disk]
+        slugs += [s for s in on_disk if s not in slugs]
+        backlog_order = _read_order(backlog_dir)
+        for slug in slugs:
+            src = ideas_dir / f"{slug}.md"
+            dst = backlog_dir / f"{slug}.md"
+            if dst.exists():
+                # Never overwrite; leave the ideas copy in place for manual review.
+                continue
+            src.rename(dst)
+            if slug not in backlog_order:
+                backlog_order.append(slug)
+            moved += 1
+        _write_order(backlog_dir, backlog_order)
+        if not any(ideas_dir.glob("*.md")):
+            order_file = ideas_dir / "_order.json"
+            if order_file.exists():
+                order_file.unlink()
+            try:
+                ideas_dir.rmdir()
+            except OSError:
+                pass  # unexpected leftover files; leave the folder alone
+    if moved:
+        server.reset_id_index()
+    return {"cards_moved": moved}
