@@ -488,6 +488,10 @@ a { color: #0052cc; text-decoration: none; }
   transition: transform 0.2s;
   display: inline-block;
 }
+/* With a single board there is nothing to tell apart: no lane header, no lane jump bar. */
+.board-view.single-lane .swimlane-header { display: none; }
+.board-view.single-lane .swimlane { padding-top: 24px; }
+.lanes-bar.single-lane { display: none; }
 .swimlane.collapsed .swimlane-toggle { transform: rotate(-90deg); }
 .swimlane.collapsed .swimlane-columns { display: none; }
 .swimlane.collapsed { padding: 8px 24px; }
@@ -557,27 +561,28 @@ a { color: #0052cc; text-decoration: none; }
   display: flex;
   flex-direction: column;
 }
-.board-column[data-list="backlog"]     { background: #E9C46A; }
-.board-column[data-list="in-progress"] { background: #264653; }
-.board-column[data-list="done"]        { background: #2A9D8F; }
-.board-column[data-list="in-progress"] .column-header { color: #a0b8c4; }
-.board-column[data-list="in-progress"] .column-header .card-count { background: rgba(255,255,255,0.15); color: #a0b8c4; }
-.board-column[data-list="done"] .column-header { color: #b8e0d8; }
-.board-column[data-list="done"] .column-header .card-count { background: rgba(255,255,255,0.15); color: #b8e0d8; }
+.board-column[data-list="backlog"]     { background: #EF767A; }
+.board-column[data-list="in-progress"] { background: #456990; }
+.board-column[data-list="done"]        { background: #49BEAA; }
+.board-column .column-header { color: #0b1f33; border-color: rgba(23,43,77,0.25); }
+.board-column .column-header .card-count { background: rgba(23,43,77,0.18); }
+.board-column[data-list="in-progress"] .column-header { color: #fff; border-color: rgba(255,255,255,0.45); }
+.board-column[data-list="in-progress"] .column-header .card-count { background: rgba(255,255,255,0.35); }
+/* Same look as the Timeline section titles (.dash-section-title). */
 .column-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px 10px;
+  gap: 8px;
+  font-size: 16px;
   font-weight: 700;
-  font-size: 13px;
-  color: #5e6c84;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  margin: 0 2px 10px;
+  padding: 0 6px 8px;
+  border-bottom: 2px solid #dfe1e6;
 }
-.column-header .column-note {
+.column-header .column-note,
+.dash-section-title .column-note {
   flex: 1;
-  margin-left: 6px;
+  text-align: right;
   font-size: 10px;
   font-weight: 500;
   text-transform: none;
@@ -588,8 +593,8 @@ a { color: #0052cc; text-decoration: none; }
   text-overflow: ellipsis;
 }
 .column-header .card-count {
-  background: #dfe1e6;
-  color: #5e6c84;
+  background: rgba(255,255,255,0.35);
+  color: inherit;
   padding: 1px 8px;
   border-radius: 10px;
   font-size: 11px;
@@ -799,36 +804,40 @@ body {
 }
 .card.high-prio:hover { box-shadow: inset 4px 0 0 #e53935, 0 4px 12px rgba(0,0,0,0.15); }
 .card.high-prio .card-title { color: #a50e0e; }
-.dash-card.high-prio { background: #fff1f0; box-shadow: inset 4px 0 0 #e53935; }
 .table-view tr.high-prio td:first-child { box-shadow: inset 4px 0 0 #e53935; color: #a50e0e; font-weight: 600; }
 
 /* ── Dashboard View ───────────────────────────────────────────── */
+/* Same grid and grey lane as the single Kanban swimlane: column width,
+   gap, left edge and lane background all match. */
 .dashboard-view {
-  padding: 24px;
-  max-width: 1600px;
-  margin: 0 auto;
+  width: var(--lane-w);
+  margin: 16px;
+  padding: 24px var(--lane-pad-x);
+  background: #e4e6ea;
+  border-radius: 10px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(3, var(--column-w));
+  gap: var(--column-gap);
 }
+.dashboard-view .dash-memory-tile { grid-column: 1 / -1; }
 .dash-section {
   background: #e4e6ea;
   border-radius: 10px;
-  padding: 12px 12px 40px;
+  padding: 10px var(--card-gutter) 40px;
   min-width: 0;
   min-height: 140px;
 }
-.dash-section.overdue { background: #AD343E; }
-.dash-section.today { background: #63ADF2; }
-.dash-section.week { background: #A7CCED; }
-.dash-section.next-week { background: #82A0BC; }
-.dash-section.later { background: #6B8FB3; }
-.dash-section.someday { background: #545E75; }
-/* Cap the Someday section's body at roughly 7 cards — same rationale as
+.dash-section.overdue { background: #E07A5F; }
+.dash-section.today { background: #F2CC8F; }
+.dash-section.week { background: #F4F1DE; }
+.dash-section.next-week { background: #81B29A; }
+.dash-section.later { background: #5F797B; }
+.dash-section.someday { background: #3D405B; }
+/* Cap the Someday section's body at the Done column's height — same rationale as
    the Done column in Kanban: low-priority work shouldn't dominate the
    dashboard. Fade-mask hints "more below"; cleared on scroll-to-bottom. */
 .dash-section.someday .dash-section-body {
-  max-height: 420px;
+  max-height: 348px;
   overflow-y: auto;
   overscroll-behavior: contain;
   mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
@@ -848,93 +857,43 @@ body {
   padding: 0 6px 8px;
   border-bottom: 2px solid #dfe1e6;
 }
-.dash-section-title.overdue,
+.dash-section-title {
+  color: #0b1f33;
+  border-color: rgba(23,43,77,0.25);
+}
+.dash-section-title.next-week,
+.dash-section-title.later,
 .dash-section-title.someday {
   color: #fff;
   border-color: rgba(255,255,255,0.45);
 }
-.dash-section-title.today,
-.dash-section-title.week,
-.dash-section-title.next-week,
-.dash-section-title.later {
-  color: #0b1f33;
-  border-color: rgba(23,43,77,0.25);
-}
 .dash-section-card-count {
-  background: rgba(255,255,255,0.35);
+  background: rgba(23,43,77,0.18);
   color: inherit;
   font-size: 11px;
   font-weight: 600;
   padding: 1px 8px;
   border-radius: 10px;
 }
-.dash-section.today .dash-section-card-count,
-.dash-section.week .dash-section-card-count,
 .dash-section.next-week .dash-section-card-count,
-.dash-section.later .dash-section-card-count {
-  background: rgba(23,43,77,0.18);
+.dash-section.later .dash-section-card-count,
+.dash-section.someday .dash-section-card-count {
+  background: rgba(255,255,255,0.35);
 }
-.dash-group-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: #5e6c84;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 12px 0 6px;
+.dash-section .dash-empty {
+  color: rgba(11,31,51,0.72);
 }
-.dash-section.overdue .dash-group-title,
-.dash-section.someday .dash-group-title,
-.dash-section.overdue .dash-empty,
+.dash-section.next-week .dash-empty,
+.dash-section.later .dash-empty,
 .dash-section.someday .dash-empty {
   color: rgba(255,255,255,0.78);
 }
-.dash-section.today .dash-group-title,
-.dash-section.week .dash-group-title,
-.dash-section.next-week .dash-group-title,
-.dash-section.later .dash-group-title,
-.dash-section.today .dash-empty,
-.dash-section.week .dash-empty,
-.dash-section.next-week .dash-empty,
-.dash-section.later .dash-empty {
-  color: rgba(11,31,51,0.72);
-}
-.dash-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 6px;
-  margin-bottom: 4px;
-  cursor: pointer;
-  transition: box-shadow 0.1s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-}
-.dash-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
-.dash-card .dash-labels { display: flex; gap: 3px; }
-.dash-card .dash-label-dot { width: 8px; height: 8px; border-radius: 50%; }
-.dash-card .dash-title { flex: 1; font-weight: 500; font-size: 14px; }
-.dash-card .dash-due { font-size: 12px; color: #5e6c84; }
-.dash-card .dash-due.overdue { color: #e74c3c; font-weight: 600; }
-.dash-card .dash-list { font-size: 11px; color: #5e6c84; background: #f4f5f7; padding: 1px 6px; border-radius: 3px; }
-.dash-card .dash-assignee { font-size: 11px; color: #42526e; background: #deebff; padding: 1px 6px; border-radius: 3px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dash-card .dash-assignee.dash-assignee-empty { color: #97a0af; background: transparent; padding: 0; }
 .dash-empty { color: #5e6c84; font-size: 14px; padding: 12px 6px; }
 .dash-card.dragging { opacity: 0.4; }
 .dash-card.card-settling { animation: cardSettle 0.25s ease-out; }
 .dash-section.drag-over { outline: 2px dashed #0052cc; outline-offset: -2px; }
 .dash-section.drag-over.no-drop { outline-color: #e74c3c; cursor: not-allowed; }
 
-@media (max-width: 1200px) {
-  .dashboard-view {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 700px) {
-  .dashboard-view {
-    grid-template-columns: 1fr;
-  }
-}
 
 /* ── Chat sidebar ─────────────────────────────────────────────── */
 #chat-sidebar {
@@ -953,15 +912,15 @@ body {
 #chat-sidebar[hidden] { display: none; }
 body.chat-open { padding-right: var(--chat-sidebar-w); }
 
-/* Kanban: grey out everything right of the swimlanes, from the top bar
-   down to the bottom of the page. The active area keeps the same 16px
-   margin on the right as on the left. */
-body.kanban-active {
+/* Kanban and Timeline: grey out everything right of the lane, from the
+   top bar down to the bottom of the page. The active area keeps the same
+   16px margin on the right as on the left. */
+body.lane-view-active {
   --active-w: calc(16px + var(--lane-w) + 16px);
   background: linear-gradient(to right, #f4f5f7 var(--active-w), #d5d8de var(--active-w));
 }
-body.kanban-active .top-bar,
-body.kanban-active .filter-bar {
+body.lane-view-active .top-bar,
+body.lane-view-active .filter-bar {
   background: linear-gradient(to right, #fff var(--active-w), #d5d8de var(--active-w));
 }
 .chat-header {
@@ -2213,7 +2172,7 @@ body.kanban-active .filter-bar {
 }
 </style>
 </head>
-<body class="kanban-active">
+<body class="lane-view-active">
 
 <!-- ── Splash screen (auto-dismisses after ~1.4s) ─────────────── -->
 <div id="flow-splash">
@@ -3320,7 +3279,7 @@ function recordAgentMovesFromApply(selected, result) {
    ================================================================ */
 function switchView(view) {
   state.currentView = view;
-  document.body.classList.toggle('kanban-active', view === 'board');
+  document.body.classList.toggle('lane-view-active', view === 'board' || view === 'dashboard');
   document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
   document.querySelectorAll('.view-switcher button').forEach(b => {
@@ -3491,8 +3450,8 @@ async function renderBoard() {
       col.innerHTML = `
         <div class="column-header">
           <span>${formatListName(listSlug)}</span>
-          ${columnNote}
           <span class="card-count">${cards.length}</span>
+          ${columnNote}
         </div>
         <div class="column-cards" data-list="${listSlug}" data-board="${escHtml(boardInfo.slug)}">
         </div>
@@ -3521,6 +3480,11 @@ async function renderBoard() {
 
   const sidebar = document.getElementById('lane-sidebar');
   sidebar.innerHTML = '';
+  const singleLane = container.querySelectorAll('.swimlane').length === 1;
+  container.classList.toggle('single-lane', singleLane);
+  sidebar.classList.toggle('single-lane', singleLane);
+  // A collapsed lane would be unreachable once its header is hidden.
+  if (singleLane) container.querySelector('.swimlane').classList.remove('collapsed');
   container.querySelectorAll('.swimlane').forEach(lane => {
     const slug = lane.dataset.board;
     const name = lane.querySelector('.swimlane-header-name')?.textContent || slug;
@@ -3543,14 +3507,8 @@ async function renderBoard() {
   });
 }
 
-function createCardElement(card) {
-  const cardEl = document.createElement('div');
-  cardEl.className = isHighPrio(card) ? 'card high-prio' : 'card';
-  cardEl.draggable = true;
-  cardEl.dataset.card = card.slug;
-  cardEl.dataset.board = card.board;
-  cardEl.dataset.list = card.list;
-
+// Kanban card body, shared with the Timeline so both views draw identical cards.
+function cardInnerHtml(card) {
   const assignee = typeof card.assignee === 'string' ? card.assignee : '';
   const due = typeof card.due === 'string' ? card.due : '';
   const dueClass = due ? (isOverdue(due) && card.list !== 'done' ? ' overdue' : '') : ' missing';
@@ -3559,7 +3517,7 @@ function createCardElement(card) {
     .join('');
 
   // Every slot is always present (possibly empty) so card height is fixed.
-  cardEl.innerHTML = `
+  return `
     <div class="card-top">
       <span class="card-id-chip">${escHtml(card.id || card.slug)}</span>
       <div class="card-labels">${labelsHtml}</div>
@@ -3570,6 +3528,17 @@ function createCardElement(card) {
       <span class="card-assignee${assignee ? '' : ' missing'}" title="${escHtml(assignee)}">${assignee ? escHtml(assignee) : 'Unassigned'}</span>
       <span class="card-due${dueClass}">${due ? formatDate(due) : 'No due-date'}</span>
     </div>`;
+}
+
+function createCardElement(card) {
+  const cardEl = document.createElement('div');
+  cardEl.className = isHighPrio(card) ? 'card high-prio' : 'card';
+  cardEl.draggable = true;
+  cardEl.dataset.card = card.slug;
+  cardEl.dataset.board = card.board;
+  cardEl.dataset.list = card.list;
+
+  cardEl.innerHTML = cardInnerHtml(card);
 
   cardEl.addEventListener('click', () => {
     const currentBoard = cardEl.dataset.board;
@@ -3700,7 +3669,7 @@ function setupDropZone(cardsContainer) {
       position = allCards.indexOf(afterEl);
     }
 
-    const draggedCard = document.querySelector(`.card[data-card="${dragData.card}"][data-board="${dragData.board}"]`);
+    const draggedCard = document.querySelector(`#board-columns .card[data-card="${dragData.card}"][data-board="${dragData.board}"]`);
     // Snapshot source position BEFORE we mutate the DOM, so undo can restore
     // the card to its exact prior slot (not just the end of the source list).
     let srcPosition = -1;
@@ -3789,42 +3758,16 @@ async function renderDashboard() {
   data.later     = applyFilters(data.later     || []);
   data.someday   = applyFilters(data.someday   || []);
 
-  function groupByBoard(cards) {
-    const groups = {};
-    for (const c of cards) {
-      const boardName = c.board || 'Unknown';
-      if (!groups[boardName]) groups[boardName] = [];
-      groups[boardName].push(c);
-    }
-    return groups;
-  }
-
-  function renderSection(title, cssClass, bucket, cards) {
-    const groups = groupByBoard(cards);
+  function renderSection(title, cssClass, bucket, cards, note = '') {
+    const noteHtml = note ? `<span class="column-note">${escHtml(note)}</span>` : '';
     let html = `<div class="dash-section ${cssClass}" data-bucket="${bucket}">
-      <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span></div>
+      <div class="dash-section-title ${cssClass}"><span>${title}</span><span class="dash-section-card-count">${cards.length}</span>${noteHtml}</div>
       <div class="dash-section-body">`;
     if (cards.length === 0) {
       html += '<div class="dash-empty">No cards</div>';
     } else {
-      for (const [board, boardCards] of Object.entries(groups)) {
-        html += `<div class="dash-group-title">${escHtml(board)}</div>`;
-        for (const c of boardCards) {
-          const labels = visibleLabels(c);
-          const labelDots = labels.map(l => `<div class="dash-label-dot ${labelColorClass(l)}" title="${escHtml(l)}"></div>`).join('');
-          const dueClass = c.due && isOverdue(c.due) && c.list !== 'done' ? 'overdue' : '';
-          const assignee = (c.assignee || '').trim();
-          const assigneeHtml = assignee
-            ? `<span class="dash-assignee" title="${escHtml(assignee)}">${escHtml(assignee)}</span>`
-            : '<span class="dash-assignee dash-assignee-empty" title="Unassigned">—</span>';
-          html += `<div class="dash-card${isHighPrio(c) ? ' high-prio' : ''}" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}" data-due="${escHtml(c.due || '')}">
-            <div class="dash-labels">${labelDots}</div>
-            <span class="dash-title">${escHtml(c.title)}</span>
-            <span class="dash-list">${formatListName(c.list)}</span>
-            ${assigneeHtml}
-            <span class="dash-due ${dueClass}">${formatDate(c.due)}</span>
-          </div>`;
-        }
+      for (const c of cards) {
+        html += `<div class="card dash-card${isHighPrio(c) ? ' high-prio' : ''}" draggable="true" data-board="${escHtml(c.board)}" data-list="${escHtml(c.list)}" data-card="${escHtml(c.slug)}" data-due="${escHtml(c.due || '')}">${cardInnerHtml(c)}</div>`;
       }
     }
     html += '</div></div>';   // close .dash-section-body, then .dash-section
@@ -3846,8 +3789,8 @@ async function renderDashboard() {
     renderSection('Today',     'today',     'today',     data.today || []) +
     renderSection('This Week', 'week',      'this_week', data.this_week || []) +
     renderSection('Next Week', 'next-week', 'next_week', data.next_week || []) +
-    renderSection('Later',     'later',     'later',     data.later || []) +
-    renderSection('Someday',   'someday',   'someday',   data.someday || []);
+    renderSection('Later',     'later',     'later',     data.later || [],   'Later than next week') +
+    renderSection('Someday',   'someday',   'someday',   data.someday || [], 'Due-date not set');
 
   const memoryTile = container.querySelector('#dash-memory-tile');
   if (memoryTile) {
@@ -3916,7 +3859,7 @@ async function renderDashboard() {
       if (sourceSection === section) return;
 
       const oldDue = cardEl.dataset.due || '';
-      moveDashCardTo(cardEl, section, payload.board, newDue);
+      moveDashCardTo(cardEl, section, newDue);
 
       try {
         await api.put(
@@ -3952,14 +3895,15 @@ function checklistBarHtml(card) {
 }
 
 function updateCardChecklistBar(board, list, slug, card) {
-  const cardEl = document.querySelector(
+  document.querySelectorAll(
     `.card[data-board="${CSS.escape(board)}"][data-list="${CSS.escape(list)}"][data-card="${CSS.escape(slug)}"]`
-  );
-  const bar = cardEl && cardEl.querySelector('.card-checklist-bar');
-  if (bar) bar.innerHTML = checklistBarHtml(card);
+  ).forEach(cardEl => {
+    const bar = cardEl.querySelector('.card-checklist-bar');
+    if (bar) bar.innerHTML = checklistBarHtml(card);
+  });
 }
 
-function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
+function moveDashCardTo(cardEl, destSection, newDueIso) {
   const sourceSection = cardEl.closest('.dash-section');
   // Cards (and group titles) live inside .dash-section-body, not directly in
   // the section. Targeting the body is critical for capped sections (Someday)
@@ -3967,49 +3911,24 @@ function moveDashCardTo(cardEl, destSection, boardName, newDueIso) {
   const destBody = destSection.querySelector('.dash-section-body') || destSection;
 
   // Update the card's own due-date label and overdue class.
-  const dueEl = cardEl.querySelector('.dash-due');
+  const dueEl = cardEl.querySelector('.card-due');
   if (dueEl) {
-    dueEl.textContent = formatDate(newDueIso);
+    dueEl.textContent = newDueIso ? formatDate(newDueIso) : 'No due-date';
     dueEl.classList.toggle('overdue', !!newDueIso && isOverdue(newDueIso) && cardEl.dataset.list !== 'done');
+    dueEl.classList.toggle('missing', !newDueIso);
   }
 
-  // Find or create the per-board group inside the destination section.
-  const titles = [...destBody.querySelectorAll('.dash-group-title')];
-  let groupTitle = titles.find(t => t.textContent === boardName);
-  if (!groupTitle) {
-    // Section may currently show "No cards" — clear it first.
-    const empty = destBody.querySelector('.dash-empty');
-    if (empty) empty.remove();
-    groupTitle = document.createElement('div');
-    groupTitle.className = 'dash-group-title';
-    groupTitle.textContent = boardName;
-    destBody.appendChild(groupTitle);
-  }
-
-  // Insert the card right after the group's last card (or right after the title).
-  let insertAfter = groupTitle;
-  let next = groupTitle.nextElementSibling;
-  while (next && next.classList.contains('dash-card')) {
-    insertAfter = next;
-    next = next.nextElementSibling;
-  }
-  insertAfter.after(cardEl);
+  // Section may currently show "No cards" — clear it first.
+  const empty = destBody.querySelector('.dash-empty');
+  if (empty) empty.remove();
+  destBody.appendChild(cardEl);
 
   // Animate the moved card.
   cardEl.classList.add('card-settling');
   cardEl.addEventListener('animationend', () => cardEl.classList.remove('card-settling'), { once: true });
 
-  // Clean up the source group: drop its title if empty, replace section body
-  // with the empty-state when the last card leaves.
+  // Replace the source section body with the empty-state when the last card leaves.
   const sourceBody = sourceSection.querySelector('.dash-section-body') || sourceSection;
-  const sourceTitles = [...sourceBody.querySelectorAll('.dash-group-title')];
-  const sourceGroupTitle = sourceTitles.find(t => t.textContent === boardName);
-  if (sourceGroupTitle) {
-    const after = sourceGroupTitle.nextElementSibling;
-    if (!after || !after.classList.contains('dash-card')) {
-      sourceGroupTitle.remove();
-    }
-  }
   if (!sourceBody.querySelector('.dash-card')) {
     const empty = document.createElement('div');
     empty.className = 'dash-empty';
